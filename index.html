@@ -333,7 +333,7 @@ async function syncBackend(silent=false){
   try{
     const from=new Date();from.setDate(from.getDate()-90);const to=new Date();to.setDate(to.getDate()+200);
     const [salon,cards,rewards,clients,appts,clos]=await Promise.all([
-      SB.from('salons').select('opening_hours').eq('id',SB_SALON).single(),
+      SB.from('salons').select('opening_hours,settings').eq('id',SB_SALON).single(),
       sbAll(()=>SB.from('loyalty_cards').select('client_id,stamps,wheel_tokens,total_visits,last_stamp_at').eq('salon_id',SB_SALON)),
       sbAll(()=>SB.from('rewards').select('id,client_id,type,label,code,earned_at,expires_at').eq('salon_id',SB_SALON).is('used_at',null)),
       sbAll(()=>SB.from('clients').select('id,first_name,last_name,phone,email,notes,legacy,no_show_count,registered_at').eq('salon_id',SB_SALON).order('first_name')),
@@ -352,7 +352,7 @@ async function syncBackend(silent=false){
     db.live.closures=[...new Set(backendClosureRows.filter(x=>!x.time).map(x=>x.date))];
     db.live.hours={};
     backendClosureRows.filter(x=>x.time).forEach(x=>{(db.live.hours[x.date]||(db.live.hours[x.date]=[])).push(x.time)});
-    SB_HOURS=salon.data.opening_hours||{};
+    SB_HOURS=salon.data.opening_hours||{};SB_SETTINGS=salon.data.settings||{};
     for(let day=0;day<7;day++){const v=SB_HOURS[DOW_KEYS[day]];db.live.weekly[day]=Array.isArray(v)?{closed:false,start:v[0],end:v[1]}:{closed:true,start:'10:00',end:'17:30'}}
     db.live.pause=Array.isArray(SB_HOURS.pause)?SB_HOURS.pause:null;
     backendConnected=true;db.updated=new Date().toISOString();
@@ -523,7 +523,7 @@ function renderAgenda(){
    +`<div class="agenda2"><section class="card"><div class="pad bigcal">${calendarHTML(ui.miniMonth,'agenda')}</div></section>`
    +`<section class="card"><div class="cardhead"><h2 style="text-transform:none">${esc(fmt(d,{weekday:'long',day:'numeric',month:'long'}))}</h2><span class="tag gold">${list.length} rendez-vous</span></div><div class="pad">`
    +(closedDay&&!list.length?`<p class="hint">${w.closed?'Jour de repos.':'Salon fermé ce jour-là.'}</p>`:list.length?`<div class="daylist">${items}</div>`:`<p class="hint">Aucun rendez-vous ce jour-là.</p>`)
-   +quick+`</div></section></div>`;
+   +quick+sameDayCard()+`</div></section></div>`;
 }
 /* Fiche du rendez-vous : coordonnées bien visibles + détails de la réservation */
 function telHref(p){return 'tel:'+String(p||'').replace(/[^+\d]/g,'')}
@@ -559,6 +559,38 @@ function recipientHTML(){const list=messageRecipients();if(!list.length)return e
 async function blockMsgSlots(){const d=ui.msgDate;const set=new Set(current().hours[d]||[]);ui.msgSlots.forEach(x=>set.add(x));current().hours[d]=[...set].sort();try{await syncClosuresToBackend('hours',d);toast('Créneaux bloqués : le site ne les propose plus.')}catch(e){toast('Blocage impossible.');syncBackend(true)}}
 async function cancelMsgSlots(){const ids=activeBookings(ui.msgDate).filter(b=>ui.msgSlots.has(b.time)).map(b=>b.id);if(!ids.length)return;const r=await SB.from('appointments').update({status:'cancelled'}).in('id',ids);if(r.error){toast('Annulation impossible.');return}await syncBackend(true);toast(ids.length+' rendez-vous annulé(s). Pense à prévenir les clients (colonne de droite).');}
 
+/* ===== Jour même (fermé par défaut, ouverture manuelle) et début de journée plus tard ===== */
+let SB_SETTINGS={};
+function sameDayOpen(){return SB_SETTINGS.open_today===today()}
+function sameDayCard(){
+  const d=today();if(ui.date!==d)return '';
+  const w=current().weekly[weekday(d)];if(w.closed||current().closures.includes(d))return '';
+  const last=SB_SETTINGS.same_day_last||'16:30';
+  return sameDayOpen()
+   ?`<div class="notice" style="margin-top:14px">${icon('check')}<span><strong>Aujourd’hui est ouvert</strong> aux réservations jusqu’au créneau de ${esc(last)}. ${btn('Fermer aujourd’hui','sameday-close','','ghost')}</span></div>`
+   :`<div class="notice" style="margin-top:14px">${icon('lock')}<span>Le jour même est fermé aux réservations. Calme aujourd’hui ? ${btn('Ouvrir aujourd’hui (jusqu’à '+last+')','sameday-open','','primary')}</span></div>`;
+}
+async function setSameDay(open){const r=await SB.rpc('pro_open_today',{p_open:open});if(r.error||!r.data||!r.data.ok){toast('Action impossible.');return}
+  if(open)SB_SETTINGS.open_today=r.data.open_today;else delete SB_SETTINGS.open_today;render();
+  toast(open?'Aujourd’hui est ouvert : les créneaux libres sont réservables sur le site.':'Aujourd’hui est fermé aux réservations.')}
+function lateStartCard(){
+  if(!ui.lsDate){let d=addDays(today(),1);for(let i=0;i<14&&current().weekly[weekday(d)].closed;i++)d=addDays(d,1);ui.lsDate=d}
+  const d=ui.lsDate,slots=slotsFor(d),blocked=new Set(current().hours[d]||[]);
+  let firstFree=slots.find(x=>!blocked.has(x))||'';
+  const open=slots.length&&!current().closures.includes(d);
+  return `<section class="card" style="margin-top:18px"><div class="cardhead"><h2>Commencer plus tard un jour précis</h2></div><div class="pad stack"><p class="hint">Exemple : mardi, tu commences à midi. Les créneaux avant cette heure ne sont plus proposés sur le site ce jour-là.</p><div class="two"><div class="field"><label for="lsDate">Jour</label><input type="date" id="lsDate" value="${d}"></div><div class="field"><label for="lsTime">Je commence à</label>${open?`<select id="lsTime">${slots.map(x=>`<option value="${x}" ${x===firstFree?'selected':''}>${x}${x===slots[0]?' (heure normale)':''}</option>`).join('')}</select>`:'<p class="hint">Jour fermé.</p>'}</div></div>${open?btn('Enregistrer l’heure de début','late-start','check','primary'):''}</div></section>`;
+}
+async function saveLateStart(){
+  const d=ui.lsDate,t=document.getElementById('lsTime')?.value;if(!d||!t)return;
+  const slots=slotsFor(d),prev=current().hours[d]||[];
+  const before=slots.filter(x=>x<t);
+  const keep=prev.filter(x=>!slots.includes(x)||x>=t);
+  current().hours[d]=[...new Set([...keep,...before])].sort();
+  try{await syncClosuresToBackend('hours',d);toast(before.length?'Le '+fmt(d,{weekday:'long',day:'numeric',month:'long'})+', tu commences à '+t+'. Le site est à jour.':'Heure normale rétablie pour ce jour.')}
+  catch(e){toast('Enregistrement impossible.');syncBackend(true)}
+}
+document.addEventListener('change',e=>{if(e.target.id==='lsDate'&&validDate(e.target.value)){ui.lsDate=e.target.value;render()}});
+
 function activeBookings(date){return current().bookings.filter(b=>b.status==='confirmed'&&(!date||b.date===date))}
 function atSlot(date,time,seat){return activeBookings(date).find(b=>b.time===time&&b.seat===seat)}
 function initials(s){return s.split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()}
@@ -568,7 +600,7 @@ function renderChrome(){document.documentElement.lang=ui.lang;document.title=db.
  document.getElementById('topbar').innerHTML=`${iconBtn('Ouvrir le menu','menu','menu','class="menuBtn"').replace('btn ghost iconbtn','btn ghost iconbtn menuBtn').replace(' class="menuBtn"','')}<form class="topsearch" id="globalSearchForm">${icon('search')}<input id="globalSearch" aria-label="${txt('Rechercher un client')}" placeholder="${txt('Rechercher un client')}" value=""></form><div class="topactions"><span class="connection">${icon(backendConnected?'check':'info')}${backendConnected?'Base connectée':txt('Connexion…')}</span>${iconBtn('Aide et connexion','help','info')}<select id="language" aria-label="${txt('Langue')}">${[['fr','FR'],['en','EN'],['es','ES'],['it','IT']].map(([v,l])=>`<option value="${v}" ${ui.lang===v?'selected':''}>${l}</option>`).join('')}</select></div>`}
 function heading(label,sub,actions=''){return `<div class="pagehead"><div><div class="eyebrow caps">${esc(db.settings.name)} / ${txt(label)}</div><h1>${txt(label)}</h1><p class="subtitle">${esc(sub)}</p></div><div class="pageactions">${actions}</div></div>`}
 function modeBar(){return `<div class="modebar"><span class="row">${icon(ui.mode==='demo'?'info':'lock')}<span>${ui.mode==='demo'?txt('Démonstration · rendez-vous fictifs, séparés de vos données.'):'Agenda connecté · les rendez-vous du site arrivent ici, et tes fermetures bloquent le site.'}</span></span>${btn(ui.mode==='demo'?'Quitter la démonstration':'Essayer des exemples','demo','','ghost')}</div>`}
-function render(){renderChrome();const target=document.getElementById('main');target.innerHTML=(!storageOK?`<div class="notice error" style="margin-bottom:18px">${txt('Sauvegarde impossible. Exportez une copie de vos données.')}</div>`:'')+({agenda:renderAgenda,clients:renderClients,fidelite:renderFidelite,caisse:renderCaisse,vacations:renderVacations,hours:renderHours,messages:renderMessages,settings:renderSettings}[ui.page]());}
+function render(){renderChrome();const target=document.getElementById('main');target.innerHTML=(!storageOK?`<div class="notice error" style="margin-bottom:18px">${txt('Sauvegarde impossible. Exportez une copie de vos données.')}</div>`:'')+({agenda:renderAgenda,clients:renderClients,fidelite:renderFidelite,caisse:renderCaisse,vacations:()=>renderVacations()+lateStartCard(),hours:renderHours,messages:renderMessages,settings:renderSettings}[ui.page]());}
 function miniCalendar(){return `<div class="card minicard"><div class="pad minical">${calendarHTML(ui.miniMonth,'mini')}</div></div>`}
 function calendarHTML(month,type){const first=month.slice(0,7)+'-01',last=dateObj(monthShift(first,1));last.setDate(0);const offset=(weekday(first)+6)%7;let cells='';for(let i=0;i<offset;i++)cells+='<span></span>';for(let n=1;n<=last.getDate();n++){const d=first.slice(0,8)+String(n).padStart(2,'0'),closed=type==='vac'?ui.vacDraft.has(d):(type==='agenda'&&current().closures.includes(d)),rest=current().weekly[weekday(d)].closed,cnt=type==='agenda'?activeBookings(d).length:0;cells+=`<button type="button" class="calcell ${d===today()?'today':''} ${closed?'blocked':''} ${(type==='mini'||type==='agenda')&&d===ui.date?'active':''} ${cnt?'hasrdv':''} ${rest&&!closed?'rest':''}" data-action="${type==='vac'?'vac-day':'agenda-date'}" data-date="${d}" aria-label="${esc(fmt(d))}${closed?' — '+txt('Fermé'):''}" ${type==='vac'?`aria-pressed="${closed}"`:d===ui.date?'aria-current="date"':''}><span>${n}</span>${type==='agenda'?(cnt?`<span class="status">${cnt}</span>`:closed?`<span class="status">${txt('Fermé')}</span>`:''):''}${type==='vac'?`<span class="status">${closed?'✓ '+txt('Fermé'):rest?txt('Repos'):''}</span>`:''}</button>`}return `<div class="calnav">${iconBtn('Mois précédent',type==='vac'?'vac-prev':'mini-prev','left')}<strong>${esc(fmt(first,{month:'long',year:'numeric'}))}</strong>${iconBtn('Mois suivant',type==='vac'?'vac-next':'mini-next','right')}</div><div class="calgrid">${Array.from({length:7},(_,i)=>`<div class="calweekday">${esc(fmt(addDays('2026-09-14',i),{weekday:'short'}))}</div>`).join('')}${cells}</div>`}
 function stat(label,value,ico){return `<div class="card stat"><div><div class="statlabel">${txt(label)}</div><div class="statvalue" ${label==='Horaires du jour'?'style="font-size:20px"':''}>${esc(value)}</div></div><div class="statIcon">${icon(ico)}</div></div>`}
@@ -634,6 +666,9 @@ case 'save-hours':saveHoursBackend();break
 case 'save-weekly':saveWeeklyBackend();break;
 case 'visit-pay':visitDone(el.dataset.id,el.dataset.m);break;
 case 'visit-noshow':visitNoShow(el.dataset.id);break;
+case 'sameday-open':setSameDay(true);break;
+case 'sameday-close':setSameDay(false);break;
+case 'late-start':saveLateStart();break;
 case 'msg-all':activeBookings(ui.msgDate).forEach(b=>ui.msgSlots.add(b.time));render();break;
 case 'msg-next':{const now=clock(new Date().getHours()*60+new Date().getMinutes()-30);ui.msgSlots.clear();activeBookings(ui.msgDate).forEach(b=>{if(ui.msgDate>today()||b.time>=now)ui.msgSlots.add(b.time)});render();break}
 case 'msg-none':ui.msgSlots.clear();render();break;
