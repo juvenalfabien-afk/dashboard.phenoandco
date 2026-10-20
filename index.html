@@ -361,7 +361,7 @@ async function syncBackend(silent=false){
     db.live.pause=Array.isArray(SB_HOURS.pause)?SB_HOURS.pause:null;
     backendConnected=true;db.updated=new Date().toISOString();
     if(!silent)toast('Base Pheno & Co connectée.');
-    if(!hasDirty()&&!document.getElementById('modal').open&&!FID.scanning)render();else renderChrome();
+    if(!hasDirty()&&!document.getElementById('modal').open&&!FID.scanning&&ui.page!=='fidelite')render();else renderChrome();
   }catch(e){
     backendConnected=false;console.error(e);
     if(!silent)toast('Connexion à la base impossible. Réessayez dans quelques instants.');
@@ -459,7 +459,7 @@ function showLogin(msg){document.getElementById('sbLogin')?.remove();document.bo
 async function afterSession(){
   const m=await SB.from('salon_members').select('salon_id').limit(1).maybeSingle();
   if(m.error||!m.data){await SB.auth.signOut();showLogin('Ce compte n’est relié à aucun salon.');return false}
-  SB_SALON=m.data.salon_id;document.getElementById('sbLogin')?.remove();await syncBackend(false);const hm=location.hash.match(/c=([0-9a-f-]{36})/i);if(hm){history.replaceState(null,'',location.pathname);ui.page='fidelite';render();fidOpenByToken(hm[1].toLowerCase())}return true;
+  SB_SALON=m.data.salon_id;document.getElementById('sbLogin')?.remove();await syncBackend(false);const hm=location.hash.match(/c=([0-9a-f-]{36})/i);if(hm){history.replaceState(null,'',location.pathname);ui.page='fidelite';ui.fidHash='c='+hm[1].toLowerCase();render()}return true;
 }
 async function initAuth(){
   if(!SB){toast('Connexion impossible (internet ?). Rechargez la page.');return}
@@ -473,6 +473,10 @@ document.addEventListener('submit',async e=>{if(e.target.id!=='sbLoginForm')retu
   err.textContent='';await afterSession();},true);
 
 function renderFidelite(){
+  const hash=ui.fidHash?'#'+ui.fidHash:'';ui.fidHash='';
+  return `<iframe id="fidFrame" title="Espace carte de fidélité" src="fidelite.html${hash}" allow="camera" style="display:block;width:100%;min-height:80vh;border:0;border-radius:18px;background:#0B1629"></iframe>`;
+}
+function renderFideliteOld(){
   const cards=[...loyalty.cards.values()],now=Date.now();
   const coupes=[],gifts=[];
   loyalty.rewards.forEach((list,cid)=>list.forEach(r=>{const exp=r.expires_at?new Date(r.expires_at).getTime():null;if(exp&&exp<now)return;(r.type==='coupe'?coupes:gifts).push({r,cid,exp})}));
@@ -662,7 +666,7 @@ function activeBookings(date){return current().bookings.filter(b=>b.status==='co
 function atSlot(date,time,seat){return activeBookings(date).find(b=>b.time===time&&b.seat===seat)}
 function initials(s){return s.split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()}
 function renderChrome(){document.documentElement.lang=ui.lang;document.title='Pheno&Co Dashboard';document.documentElement.style.setProperty('--gold',db.settings.accent);const h=db.settings.accent.replace('#','');const lum=(.2126*parseInt(h.slice(0,2),16)+.7152*parseInt(h.slice(2,4),16)+.0722*parseInt(h.slice(4,6),16));document.documentElement.style.setProperty('--accent-ink',lum>140?'#111722':'#ffffff');document.body.style.backgroundImage=db.settings.background?`linear-gradient(#0c1525e8,#0c1525e8),url("${db.settings.background}")`:'';
- const nav=[['agenda','Agenda'],['clients','Clients'],['fidelite','Fidélité'],['caisse','Caisse'],['vacations','Vacances et fermetures'],['hours','Horaires'],['messages','Messages']];
+ const nav=[['agenda','Agenda'],['clients','Clients'],['fidelite','Carte de fidélité client'],['caisse','Caisse'],['vacations','Vacances et fermetures'],['hours','Horaires'],['messages','Messages']];
  document.getElementById('sidebar').innerHTML=`<div class="brand"><div class="brandmark"><img alt="" src="${db.settings.logo||'logo.png'}"></div><div><strong>${esc(db.settings.name)}</strong><div class="caps">Espace administrateur</div><div class="localinfo" style="font-size:11px;line-height:1.3;margin-top:2px">Site de réservation + cartes de fidélité</div></div></div><div class="navgroup">${txt('VOTRE SALON')}</div><nav aria-label="${txt('Navigation principale')}">${nav.map(([id,label])=>`<button class="navitem ${ui.page===id?'active':''}" data-action="page" data-page="${id}" ${ui.page===id?'aria-current="page"':''}>${icon(id)}<span>${txt(label)}</span>${id==='clients'?`<span class="badge">${db.clients.length}</span>`:''}</button>`).join('')}</nav><div class="sidebottom"><button class="navitem ${ui.page==='settings'?'active':''}" data-action="page" data-page="settings">${icon('settings')}${txt('Paramètres')}</button><button class="navitem" data-action="help">${icon('info')}${txt('Aide et connexion')}</button><button class="profile" type="button" data-action="page" data-page="settings" style="width:100%;background:none;border:0;color:inherit;text-align:left;padding-inline:0"><div class="avatar">${esc(initials(db.settings.ownerName||'Phéno'))}</div><div><strong class="small">${esc(db.settings.ownerName||'Phéno')}</strong><div class="localinfo">${txt('Espace personnel')}</div></div></button><p class="localinfo" style="margin-top:16px">${txt('Version connectée')} · ${VERSION}</p></div>`;
  document.getElementById('topbar').innerHTML=`${iconBtn('Ouvrir le menu','menu','menu','class="menuBtn"').replace('btn ghost iconbtn','btn ghost iconbtn menuBtn').replace(' class="menuBtn"','')}<form class="topsearch" id="globalSearchForm">${icon('search')}<input id="globalSearch" aria-label="${txt('Rechercher un client')}" placeholder="${txt('Rechercher un client')}" value=""></form><div class="topactions"><span class="connection">${icon(backendConnected?'check':'info')}${backendConnected?'Base connectée':txt('Connexion…')}</span>${iconBtn('Aide et connexion','help','info')}<select id="language" aria-label="${txt('Langue')}">${[['fr','FR'],['en','EN'],['es','ES'],['it','IT']].map(([v,l])=>`<option value="${v}" ${ui.lang===v?'selected':''}>${l}</option>`).join('')}</select></div>`}
 function heading(label,sub,actions=''){return `<div class="pagehead"><div><div class="eyebrow caps">${esc(db.settings.name)} / ${txt(label)}</div><h1>${txt(label)}</h1><p class="subtitle">${esc(sub)}</p></div><div class="pageactions">${actions}</div></div>`}
@@ -767,6 +771,7 @@ case 'remove-logo':db.settings.logo='';writeDB();render();break;
 case 'remove-background':db.settings.background='';writeDB();render();break;
 case 'save-template':db.settings.retard=document.getElementById('retardTemplate').value;if(writeDB())toast(t('Enregistré sur cet appareil.'));break;
 }});
+window.addEventListener('message',e=>{if(e.origin!==location.origin||!e.data||!e.data.pncFidHeight)return;const f=document.getElementById('fidFrame');if(f)f.style.height=Math.max(500,e.data.pncFidHeight)+'px'});
 document.getElementById('scrim').onclick=()=>{document.getElementById('sidebar').classList.remove('open');document.getElementById('scrim').classList.remove('open')};
 document.addEventListener('input',e=>{const x=e.target;switch(x.id){case 'clientQuery':ui.query=x.value;ui.pageNo=0;document.getElementById('clientResults').innerHTML=clientRows();scheduleBackendSearch(x.value);break;case 'messageText':ui.message=x.value;{const r=document.getElementById('recipients');if(r)r.innerHTML=recipientHTML()}break;case 'vacStart':ui.vacStart=x.value;break;case 'vacEnd':ui.vacEnd=x.value;break;case 'bookClientQuery':showBookMatches(x.value);scheduleBackendSearch(x.value);break}if(x.dataset.weekday!==undefined){const day=x.dataset.weekday,prop=x.dataset.prop;ui.weeklyDraft[day][prop]=prop==='closed'?x.checked:x.value;if(prop==='closed'){const row=x.closest('.weekdayrow');row.querySelectorAll('input[type=time]').forEach(t=>t.disabled=x.checked)}}});
 document.addEventListener('change',e=>{const x=e.target;switch(x.id){case 'language':{const keep={};for(const id of ['salonName','ownerName','brandSubtitle','salonPhone','salonEmail','salonAddress','retardTemplate']){const el=document.getElementById(id);if(el)keep[id]=el.value}ui.lang=x.value;db.settings.lang=ui.lang;writeDB();if(document.getElementById('modal').open)closeModal();render();for(const [id,value]of Object.entries(keep)){const el=document.getElementById(id);if(el)el.value=value}break;}case 'hourDate':dateChange(x.value);break;case 'messageDate':if(validDate(x.value)){ui.msgDate=x.value;ui.msgSlots.clear();render()}break;case 'smsChannel':ui.sms=x.checked;break;case 'emailChannel':ui.email=x.checked;break;case 'bookDate':fillBookSlots();break;case 'csvFile':importFile(x.files[0]);break;case 'backupFile':restoreBackup(x.files[0]);break;case 'logoFile':setImage(x.files[0],'logo');break;case 'backgroundFile':setImage(x.files[0],'background');break;case 'accentColor':db.settings.accent=x.value;writeDB();renderChrome();break}});
