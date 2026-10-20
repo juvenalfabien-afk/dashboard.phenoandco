@@ -204,7 +204,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
             <div class="box warn" id="v-force" hidden>
               <h4 id="v-force-title">Déjà un tampon aujourd'hui</h4>
               <p id="v-force-text">Ce client a déjà eu son tampon aujourd'hui (règle : un par jour). Pour un test ou un geste commercial, tu peux l'ajouter quand même.</p>
-              <button class="btn btn-ghost" id="b-force" type="button">Ajouter quand même</button>
+              <div class="row2" style="gap:10px"><button class="btn btn-gold" id="b-force" type="button">Oui, ajouter quand même</button><button class="btn btn-ghost" id="b-noforce" type="button">Non, ne pas ajouter</button></div>
             </div>
             <details class="more" id="v-more">
               <summary>Comment il a payé ? (facultatif, va dans Naya Caisse)</summary>
@@ -570,6 +570,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   }
   $("b-stamp").addEventListener("click", function () { manualStamp(false); });
   $("b-force").addEventListener("click", function () { manualStamp(true); });
+  $("b-noforce").addEventListener("click", function () { $("v-force").hidden = true; toast("Pas de tampon ajouté.", ""); });
   $("c-hist").addEventListener("click", async function (e) {
     var b = e.target.closest("button[data-void]"); if (!b) return;
     if (b.getAttribute("data-armed") !== "1") { b.setAttribute("data-armed", "1"); b.textContent = "Confirmer ?"; setTimeout(function () { b.removeAttribute("data-armed"); b.textContent = "Annuler"; }, 4000); return; }
