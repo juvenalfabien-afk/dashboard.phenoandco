@@ -464,6 +464,26 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     S.rewards = res[1].data || [];
     renderClient(res[2].data || []);
   }
+  // Rafraîchissement automatique de la carte affichée (roue lancée sur le téléphone du client, etc.)
+  var autoBusy = false;
+  setInterval(async function () {
+    if (!S.client || autoBusy || document.hidden) return;
+    autoBusy = true;
+    try {
+      var id = S.client.id;
+      var res = await Promise.all([
+        db.from("loyalty_cards").select("stamps, cycle, wheel_tokens, total_visits").eq("client_id", id).maybeSingle(),
+        db.from("rewards").select("id, type, label, code, expires_at, earned_at").eq("client_id", id).eq("status", "available").order("earned_at")
+      ]);
+      if (!S.client || S.client.id !== id || res[0].error || res[1].error) return;
+      var before = JSON.stringify([S.card, S.rewards]), after = JSON.stringify([res[0].data || S.card, res[1].data || []]);
+      if (before !== after) {
+        var oldStamps = S.card.stamps;
+        await refreshClient();
+        if (S.card.stamps > oldStamps) toast("Carte mise à jour : " + Math.min(S.card.stamps, 9) + "/9 tampons", "ok");
+      }
+    } catch (e) {} finally { autoBusy = false; }
+  }, 15000);
   function renderClient(pays) {
     var c = S.client, size = 10, paid = size - 1, s = S.card.stamps;
     var now = Date.now();
