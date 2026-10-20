@@ -49,6 +49,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .panel h2{font-family:var(--font-display);font-size:18px;margin:0 0 12px}
 .tabs{display:flex;gap:6px;margin-bottom:12px}
 .tabs button{flex:1;padding:10px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--muted);font-weight:600}
+.tabs button[hidden]{display:none}
 .tabs button[aria-selected="true"]{background:var(--gold-grad);color:var(--ink);border-color:transparent}
 .field{display:grid;gap:6px;margin-bottom:12px}
 .field label{font-size:13px;color:var(--muted);font-weight:600}
@@ -155,11 +156,11 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     <div class="grid">
       <div class="panel">
         <div class="tabs" role="tablist">
-          <button type="button" role="tab" aria-selected="true" id="t-scan">Scanner</button>
-          <button type="button" role="tab" aria-selected="false" id="t-search">Rechercher</button>
+          <button type="button" role="tab" aria-selected="false" id="t-scan" hidden>Scanner</button>
+          <button type="button" role="tab" aria-selected="true" id="t-search">Rechercher</button>
           <button type="button" role="tab" aria-selected="false" id="t-cards">Toutes les cartes</button>
         </div>
-        <div id="p-scan">
+        <div id="p-scan" hidden>
           <div id="reader" hidden></div>
           <div style="display:flex;gap:8px;margin-top:10px">
             <button class="btn btn-gold" id="b-cam" type="button">Ouvrir la caméra</button>
@@ -167,7 +168,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
           <p class="note">Astuce : tu peux aussi scanner le QR du client avec l'appareil photo de ton téléphone, sa fiche s'ouvre ici directement.</p>
           <p class="err" id="scan-err" role="alert"></p>
         </div>
-        <div id="p-search" hidden>
+        <div id="p-search">
           <div class="field"><label for="s-q">Nom ou téléphone</label><input id="s-q" type="search" placeholder="Ex. Ethan ou 06 64…" autocomplete="off"></div>
           <ul class="results" id="s-res"></ul>
           <p class="note">Pas besoin de scanner : ouvre la fiche du client ici, puis valide son passage avec le bouton d'encaissement.</p>
