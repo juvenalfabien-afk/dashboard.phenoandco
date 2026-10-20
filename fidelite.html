@@ -201,7 +201,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
           <div class="box">
             <h4>Valider le passage</h4>
             <button class="btn btn-gold" id="b-stamp" type="button">+1 tampon</button>
-            <p class="note" style="margin:8px 0 0">Un appui suffit. Ensuite, si tu veux, indique espèces ou carte : ça part dans Naya Caisse.</p>
+            <p class="note" id="v-stamp-note" style="margin:8px 0 0">Un appui suffit. Ensuite, si tu veux, indique espèces ou carte : ça part dans Naya Caisse.</p>
             <div class="box warn" id="v-force" hidden>
               <h4 id="v-force-title">Déjà un tampon aujourd'hui</h4>
               <p id="v-force-text">Ce client a déjà eu son tampon aujourd'hui (règle : un par jour). Pour un test ou un geste commercial, tu peux l'ajouter quand même.</p>
@@ -482,11 +482,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
       var exp = r.expires_at ? new Date(r.expires_at) : null, expired = exp && exp.getTime() < now;
       var name = r.type === "coupe" ? "Coupe offerte" : r.label;
       return '<div class="box gift' + (expired ? " expired" : "") + '"><h4>' + esc(name) + "</h4><p>" + (expired ? "Expirée le " + fmtDate(r.expires_at) + "." : "Valable jusqu'au " + (exp ? fmtDate(r.expires_at) : "—") + " · code " + esc(r.code)) +
-        "</p>" + (expired ? "" : '<button class="btn btn-ok" type="button" data-redeem="' + r.id + '">' + (r.type === "coupe" ? "Utiliser la coupe offerte" : "Donner la " + esc(name.toLowerCase())) + "</button>") + "</div>";
+        "</p>" + (expired || r.type === "coupe" ? "" : '<button class="btn btn-ok" type="button" data-redeem="' + r.id + '">' + "Donner la " + esc(name.toLowerCase()) + "</button>") + "</div>";
     }).join("");
 
-    $("b-stamp").textContent = coupeOk ? "Coupe offerte en attente : utilise-la d'abord" : "+1 tampon (" + Math.min(s + 1, paid) + "/" + paid + ")";
-    $("b-stamp").disabled = !!coupeOk;
+    S.coupeId = coupeOk ? coupe.id : null;
+    var sNow = Math.min(s, paid);
+    $("b-stamp").textContent = coupeOk ? "Valider sa " + size + "e coupe offerte" : "Ajouter un tampon";
+    $("b-stamp").className = "btn " + (coupeOk ? "btn-ok" : "btn-gold");
+    $("b-stamp").disabled = false;
+    $("v-stamp-note").textContent = coupeOk
+      ? "Sa carte est pleine (" + paid + "/" + paid + "). Un appui valide sa coupe offerte, et sa carte repart à zéro."
+      : "Il en a " + sNow + " → il passera à " + Math.min(sNow + 1, paid) + ". Ensuite, si tu veux, indique espèces ou carte : ça part dans Naya Caisse.";
     $("c-hist").innerHTML = pays.length ? pays.map(function (p) {
       var m = { cash: "espèces", card: "carte", mixed: "mixte", transfer: "virement" }[p.method] || p.method;
       return "<li><span>" + esc(p.label) + " · " + euros(p.amount_cents) + " (" + m + ")</span><span>" + fmtDateTime(p.paid_at) + '<button type="button" class="void" data-void="' + p.id + '">Annuler</button></span></li>';
@@ -569,7 +575,14 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     stampResult(r.data, false);
     if (r.data && r.data.added) { S.justStamped = S.client.id; $("v-more").open = true; }
   }
-  $("b-stamp").addEventListener("click", function () { manualStamp(false); });
+  $("b-stamp").addEventListener("click", async function () {
+    if (!S.coupeId) { manualStamp(false); return; }
+    var b = $("b-stamp"); b.disabled = true;
+    var r = await db.rpc("redeem_reward", { p_reward: S.coupeId });
+    if (r.error || !r.data || !r.data.ok) { toast(r.data && r.data.error === "expiree" ? "Cette coupe offerte a expiré." : "Impossible de valider la coupe offerte.", "bad"); b.disabled = false; await refreshClient(); return; }
+    toast("10e coupe offerte validée. Sa nouvelle carte démarre !", "ok");
+    await refreshClient();
+  });
   $("b-force").addEventListener("click", function () { manualStamp(true); });
   $("b-noforce").addEventListener("click", function () { $("v-force").hidden = true; toast("Pas de tampon ajouté.", ""); });
   $("c-hist").addEventListener("click", async function (e) {
