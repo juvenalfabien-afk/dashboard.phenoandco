@@ -106,7 +106,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .hist{list-style:none;margin:0;padding:0}
 .hist li{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);font-size:13.5px}
 .hist li:last-child{border-bottom:0}
-.hist span:last-child{color:var(--faint);white-space:nowrap;font-variant-numeric:tabular-nums}
+.hist span:last-child{color:var(--faint);white-space:nowrap;font-variant-numeric:tabular-nums}.hist li span:first-child{min-width:0;overflow-wrap:anywhere}.hist li.old span:last-child{white-space:normal}.hist li .empty{white-space:normal;color:var(--faint)}
 .empty{color:var(--faint);font-size:14px}
 .login{max-width:420px;margin:8vh auto 0}
 .login img{display:block;width:120px;margin:0 auto 14px}
@@ -149,7 +149,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
       <img src="logo.png" alt="">
       <div><h1>Espace carte de fidélité</h1><div class="sub" id="who"></div></div>
       <div class="spacer"></div>
-      <div class="kpi"><div><b id="k-count">0</b>passages aujourd'hui</div><div><b id="k-total">0 €</b>encaissés</div></div>
+      <div class="kpi" id="k-box" role="button" tabindex="0" title="Voir le détail dans la Caisse" style="cursor:pointer"><div><b id="k-count">0</b>passages aujourd'hui</div><div><b id="k-total">0 €</b>encaissés</div></div>
       <button class="btn btn-ghost btn-sm" id="b-logout" type="button" hidden>Déconnexion</button>
     </header>
 
@@ -201,14 +201,14 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
           <div class="box">
             <h4>Valider le passage</h4>
             <button class="btn btn-gold" id="b-stamp" type="button">+1 tampon</button>
-            <p class="note" id="v-stamp-note" style="margin:8px 0 0">Un appui suffit. Ensuite, si tu veux, indique espèces ou carte : ça part dans Naya Caisse.</p>
+            <p class="note" id="v-stamp-note" style="margin:8px 0 0">Un appui suffit. Ensuite, si tu veux, indique espèces ou carte : ça s’ajoute à la Caisse.</p>
             <div class="box warn" id="v-force" hidden>
               <h4 id="v-force-title">Déjà un tampon aujourd'hui</h4>
               <p id="v-force-text">Ce client a déjà eu son tampon aujourd'hui (règle : un par jour). Pour un test ou un geste commercial, tu peux l'ajouter quand même.</p>
               <div class="row2" style="gap:10px"><button class="btn btn-gold" id="b-force" type="button">Oui, ajouter quand même</button><button class="btn btn-ghost" id="b-noforce" type="button">Non, ne pas ajouter</button></div>
             </div>
             <details class="more" id="v-more">
-              <summary>Comment il a payé ? (facultatif, va dans Naya Caisse)</summary>
+              <summary>Comment il a payé ? (facultatif, va dans la Caisse)</summary>
             <div class="field" style="margin-top:12px"><label for="v-service">Prestation</label><select id="v-service"></select></div>
             <div class="field"><label for="v-amount">Montant payé (€)</label><input id="v-amount" type="number" inputmode="decimal" min="0" step="0.5"></div>
             <div class="paynow">
@@ -228,7 +228,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
           </div>
 
           <div class="box">
-            <h4>Derniers passages</h4>
+            <h4>Historique des passages</h4>
             <ul class="hist" id="c-hist"></ul>
           </div>
         </div>
@@ -330,7 +330,9 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     var d0 = new Date(); d0.setHours(0, 0, 0, 0);
     var r = await db.from("payments").select("amount_cents").eq("salon_id", S.salon.id).eq("voided", false).gte("paid_at", d0.toISOString());
     var rows = r.data || [];
-    $("k-count").textContent = rows.length;
+    var ev = await db.from("loyalty_events").select("client_id").eq("salon_id", S.salon.id).in("kind", ["stamp", "redeem"]).gte("created_at", d0.toISOString());
+    var seen = {}; (ev.data || []).forEach(function (e) { seen[e.client_id] = 1; });
+    $("k-count").textContent = Math.max(rows.length, Object.keys(seen).length);
     $("k-total").textContent = euros(rows.reduce(function (a, b) { return a + b.amount_cents; }, 0));
   }
 
@@ -458,10 +460,12 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     var res = await Promise.all([
       db.from("loyalty_cards").select("stamps, cycle, wheel_tokens, total_visits").eq("client_id", id).maybeSingle(),
       db.from("rewards").select("id, type, label, code, expires_at, earned_at").eq("client_id", id).eq("status", "available").order("earned_at"),
-      db.from("payments").select("id, label, amount_cents, method, paid_at").eq("client_id", id).eq("voided", false).order("paid_at", { ascending: false }).limit(6)
+      db.from("payments").select("id, label, amount_cents, method, paid_at").eq("client_id", id).eq("voided", false).order("paid_at", { ascending: false }).limit(8),
+      db.from("loyalty_events").select("kind, stamp_no, payment_id, detail, created_at").eq("client_id", id).in("kind", ["stamp", "redeem", "wheel_spin"]).order("created_at", { ascending: false }).limit(12)
     ]);
     S.card = res[0].data || { stamps: 0, cycle: 1, wheel_tokens: 0, total_visits: 0 };
     S.rewards = res[1].data || [];
+    S.events = res[3].data || [];
     renderClient(res[2].data || []);
   }
   // Rafraîchissement automatique de la carte affichée (roue lancée sur le téléphone du client, etc.)
@@ -512,11 +516,21 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     $("b-stamp").disabled = false;
     $("v-stamp-note").textContent = coupeOk
       ? "Sa carte est pleine (" + paid + "/" + paid + "). Un appui valide sa coupe offerte, et sa carte repart à zéro."
-      : "Il en a " + sNow + " → il passera à " + Math.min(sNow + 1, paid) + ". Ensuite, si tu veux, indique espèces ou carte : ça part dans Naya Caisse.";
-    $("c-hist").innerHTML = pays.length ? pays.map(function (p) {
+      : "Il en a " + sNow + " → il passera à " + Math.min(sNow + 1, paid) + ". Ensuite, si tu veux, indique espèces ou carte : ça s’ajoute à la Caisse.";
+    var items = pays.map(function (p) {
       var m = { cash: "espèces", card: "carte", mixed: "mixte", transfer: "virement" }[p.method] || p.method;
-      return "<li><span>" + esc(p.label) + " · " + euros(p.amount_cents) + " (" + m + ")</span><span>" + fmtDateTime(p.paid_at) + '<button type="button" class="void" data-void="' + p.id + '">Annuler</button></span></li>';
-    }).join("") : '<li><span class="empty">Pas encore de passage enregistré dans la nouvelle caisse.</span></li>';
+      return { at: p.paid_at, html: "<li><span>" + esc(p.label) + " · " + euros(p.amount_cents) + " (" + m + ")</span><span>" + fmtDateTime(p.paid_at) + '<button type="button" class="void" data-void="' + p.id + '">Annuler</button></span></li>' };
+    });
+    (S.events || []).forEach(function (e) {
+      if (e.payment_id) return; // déjà affiché avec son encaissement
+      var t = e.kind === "redeem" ? "Coupe offerte utilisée" : e.kind === "wheel_spin" ? "Roue : " + ({ boisson: "boisson gagnée", stamp: "tampon gagné", rien: "perdu" }[e.detail && e.detail.prize] || "tour joué") : "Passage (tampon " + Math.min(e.stamp_no || 0, paid) + "/" + paid + ")";
+      items.push({ at: e.created_at, html: "<li><span>" + esc(t) + "</span><span>" + fmtDateTime(e.created_at) + "</span></li>" });
+    });
+    items.sort(function (a, b) { return a.at < b.at ? 1 : -1; });
+    var h2 = items.slice(0, 8).map(function (x) { return x.html; }).join("");
+    var lg = c.legacy && c.legacy.dernier_rdv;
+    if (lg) h2 += '<li class="old"><span>Dernier rendez-vous sur l\'ancien site</span><span>' + esc(fmtDate(String(lg).replace(" ", "T"))) + "</span></li>";
+    $("c-hist").innerHTML = h2 || '<li class="old"><span class="empty">Aucun passage pour l\'instant.</span></li>';
   }
   $("c-rewards").addEventListener("click", async function (e) {
     var b = e.target.closest("button[data-redeem]"); if (!b) return;
@@ -560,7 +574,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     await refreshClient(); loadToday();
     $("v-mixbox").hidden = true; $("v-more").open = false;
     var after = S.card.stamps;
-    if (stampedNow) { toast("Encaissé " + euros(total) + " en " + how + " · envoyé à Naya Caisse", "ok"); return; }
+    if (stampedNow) { toast("Encaissé " + euros(total) + " en " + how + " · ajouté à la Caisse", "ok"); return; }
     if (after !== before) stampResult({ added: true, stamps: after, wheel: S.card.wheel_tokens > tokensBefore, reward: after === 9 }, true);
     else stampResult({ added: false, reason: S.rewards.some(function (x) { return x.type === "coupe"; }) ? "coupe_en_attente" : "deja_aujourdhui" }, true);
   }
@@ -623,6 +637,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 (function(){ if (window.parent === window) return;
   document.documentElement.style.overflow='hidden';
   document.body.style.minHeight='0';
+  (function(){ var k=document.getElementById("k-box"); function go(){ try{ parent.postMessage({ pncNav: "caisse" }, location.origin); }catch(e){} } if(k){ k.addEventListener("click", go); k.addEventListener("keydown", function(e){ if(e.key==="Enter") go(); }); } })();
   function send(){ try{ parent.postMessage({ pncFidHeight: document.documentElement.scrollHeight }, location.origin); }catch(e){} }
   if (window.ResizeObserver) new ResizeObserver(send).observe(document.body);
   window.addEventListener('load', send); setInterval(send, 1500); send();
