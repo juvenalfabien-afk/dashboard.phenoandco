@@ -1230,7 +1230,7 @@ function mgLive(){return ui.mode==='live'&&SB&&SB_SALON}
 function mgWhen(iso){try{const d=new Date(iso),n=new Date();const h=d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});return d.toDateString()===n.toDateString()?h:d.toLocaleDateString('fr-FR',{day:'numeric',month:'short'})+' · '+h}catch(e){return ''}}
 async function mgLoad(quiet){if(!mgLive()||mg.loading)return;mg.loading=true;const r=await SB.rpc('pro_msg_inbox');mg.loading=false;if(r.error||!r.data||!r.data.ok){if(!quiet)toast('Messagerie indisponible pour le moment.');return}
   const before=JSON.stringify(mg.inbox);mg.inbox=r.data;if(JSON.stringify(mg.inbox)!==before){renderChrome();if(ui.page==='inbox'&&mg.view==='list')render()}}
-async function mgOpen(id){if(!mgLive())return;mg.cid=id;mg.view='thread';mg.thread=null;render();const r=await SB.rpc('pro_msg_thread',{p_client:id});if(r.error||!r.data||!r.data.ok){toast('Conversation introuvable.');mg.view='list';render();return}mg.thread=r.data;render();mgLoad(true);mgScroll()}
+async function mgOpen(id){if(!mgLive())return;mg.cid=id;mg.view='thread';mg.thread=null;render();const r=await SB.rpc('pro_msg_thread',{p_client:id});if(r.error||!r.data||!r.data.ok){toast('Conversation introuvable.');mg.view='list';render();return}mg.thread=r.data;const e=await SB.from('clients').select('email').eq('id',id).maybeSingle();mg.thread.email=e.data?e.data.email:'';render();mgLoad(true);mgScroll()}
 function mgScroll(){setTimeout(()=>{const b=document.getElementById('mgThread');if(b)b.scrollTop=b.scrollHeight},30)}
 async function mgRefreshThread(){if(mg.view!=='thread'||!mg.cid||!mgLive())return;const r=await SB.rpc('pro_msg_thread',{p_client:mg.cid});if(r.data&&r.data.ok&&JSON.stringify(r.data.messages)!==JSON.stringify(mg.thread&&mg.thread.messages)){const t=document.getElementById('mgText'),draft=t?t.value:'';mg.thread=r.data;render();const t2=document.getElementById('mgText');if(t2)t2.value=draft;mgScroll()}}
 async function mgSend(){const t=document.getElementById('mgText');const body=(t&&t.value||'').trim();if(!body||mg.busy)return;mg.busy=true;
@@ -1247,6 +1247,11 @@ async function mgToggleAll(){const open=!(mg.inbox&&mg.inbox.open!==false);
   if(!open)confirmModal('Fermer la messagerie de tout le monde ?','<p>Tes clients ne pourront plus t’écrire depuis leur carte. Ils verront toujours tes messages, et toi tu peux toujours leur écrire.</p>',go,'Fermer pour tous');else go()}
 async function mgBlock(){if(!mg.thread)return;const b=!mg.thread.blocked;const r=await SB.rpc('pro_msg_block',{p_client:mg.cid,p_blocked:b});if(r.error||!r.data||!r.data.ok){toast('Réglage impossible.');return}mg.thread.blocked=b;toast(b?'Ce client ne peut plus t’écrire.':'Ce client peut de nouveau t’écrire.');render()}
 function mgPinReset(){confirmModal('Réinitialiser son code secret ?','<p>À faire seulement si tu as vérifié que c’est bien lui (en personne, ou s’il t’appelle depuis son propre numéro). Son code est effacé et ses téléphones sont déconnectés : à sa prochaine ouverture, il en choisira un nouveau.</p><p class="hint" style="margin-top:10px">Normalement, le client le refait seul avec « Code oublié ? » par e-mail.</p>',async()=>{const r=await SB.rpc('pro_pin_reset',{p_client:mg.cid});if(r.error||!r.data||!r.data.ok){toast('Réinitialisation impossible.');return}toast('Code effacé. Il en choisira un nouveau à sa prochaine ouverture.');mgOpen(mg.cid)},'Réinitialiser')}
+function mgEmail(){const cur=mg.thread&&mg.thread.email||'';window.__mgEmail=cur;confirmModal('Corriger l’e-mail',`<p class="hint" style="margin-bottom:10px">C’est sur cette adresse que le client reçoit le lien « Code oublié ».</p><input id="mgEmailIn" type="email" inputmode="email" autocomplete="off" value="${esc(cur)}" placeholder="prenom@exemple.fr" style="width:100%" oninput="window.__mgEmail=this.value">`,async()=>{
+  const v=window.__mgEmail;const em=String(v||'').trim().toLowerCase();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)){toast('Adresse e-mail invalide.');return}
+  const r=await SB.from('clients').update({email:em}).eq('id',mg.cid);if(r.error){toast('Modification impossible.');return}
+  mg.thread.email=em;toast('E-mail corrigé.');render()},'Enregistrer')}
 function mgBubble(m){const me=m.from==='salon';const q=m.quick?{ok:'👍',move:'🔁',cancel:'✖️'}[m.quick]+' ':'';const tag=m.broadcast?'<span class="tag" style="margin-bottom:4px">Message groupé</span><br>':'';
   return `<div style="align-self:${me?'flex-end':'flex-start'};max-width:85%;padding:10px 13px;border-radius:14px;${me?'background:var(--gold);color:#0B1629':'background:rgba(255,255,255,.06);border:1px solid var(--line)'};white-space:pre-wrap;word-wrap:break-word">${tag}${q}${esc(m.body)}<div style="font-size:11px;opacity:.7;margin-top:4px">${mgWhen(m.at)}${me?(m.read?' · lu':' · pas encore lu'):''}</div></div>`}
 function renderInbox(){
@@ -1258,11 +1263,11 @@ function renderInbox(){
   if(!open)html+=`<div class="notice error" style="margin-bottom:14px">${icon('lock')}<span>La messagerie est fermée : tes clients ne peuvent pas t’écrire. Tu peux toujours leur envoyer des messages.</span></div>`;
   if(mg.view==='thread'){const t=mg.thread;
     if(!t)return html+`<div class="card"><div class="pad"><p class="hint">Chargement…</p></div></div>`;
-    return html+`<section class="card"><div class="cardhead"><div><h2>${esc(t.name||'Client')}</h2><p class="hint">${esc(t.phone||'')} · ${t.has_pin?'carte protégée par un code':'pas encore de code'} · ${t.devices} téléphone${t.devices>1?'s':''} connecté${t.devices>1?'s':''}</p></div>${btn('‹ Retour','mg-back','','ghost')}</div>
+    return html+`<section class="card"><div class="cardhead"><div><h2>${esc(t.name||'Client')}</h2><p class="hint">${esc(t.phone||'')} · ${esc(t.email||'pas d’e-mail')} · ${t.has_pin?'carte protégée par un code':'pas encore de code'} · ${t.devices} téléphone${t.devices>1?'s':''} connecté${t.devices>1?'s':''}</p></div>${btn('‹ Retour','mg-back','','ghost')}</div>
       <div id="mgThread" class="pad" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto">${t.messages.length?t.messages.map(mgBubble).join(''):'<p class="hint">Aucun message pour l’instant.</p>'}</div>
       <div class="pad stack" style="border-top:1px solid var(--line)"><div class="row wrap" style="gap:8px">${btn('Retard','mg-tpl','','ghost','data-t="retard"')}${btn('Décalage','mg-tpl','','ghost','data-t="decalage"')}</div>
       <textarea id="mgText" rows="3" maxlength="1000" placeholder="Écris ton message…"></textarea>${btn('Envoyer dans sa carte','mg-send','check','primary')}
-      <div class="row wrap" style="gap:8px;margin-top:6px">${btn(t.blocked?'Rouvrir sa messagerie':'Fermer sa messagerie','mg-block','',t.blocked?'ghost':'ghost')}${btn('Réinitialiser son code','mg-pin','lock','danger')}</div></div></section>`}
+      <div class="row wrap" style="gap:8px;margin-top:6px">${btn(t.blocked?'Rouvrir sa messagerie':'Fermer sa messagerie','mg-block','',t.blocked?'ghost':'ghost')}${btn('Corriger l’e-mail','mg-email','','ghost')}${btn('Réinitialiser son code','mg-pin','lock','danger')}</div></div></section>`}
   if(mg.view==='bc'){
     return html+`<section class="card"><div class="cardhead"><h2>Message groupé</h2>${btn('‹ Retour','mg-back','','ghost')}</div><div class="pad stack">
       <div class="field"><label>Type de message</label><div class="row wrap" style="gap:8px">${btn('Info salon (fermeture, retard…)','mg-kind',mg.kind==='annonce'?'check':'',mg.kind==='annonce'?'primary':'ghost','data-k="annonce"')}${btn('Promo / nouveauté','mg-kind',mg.kind==='promo'?'check':'',mg.kind==='promo'?'primary':'ghost','data-k="promo"')}</div></div>
@@ -1289,6 +1294,7 @@ document.addEventListener('click',e=>{const el=e.target.closest('[data-action^="
   else if(a==='mg-toggle')mgToggleAll();
   else if(a==='mg-block')mgBlock();
   else if(a==='mg-pin')mgPinReset();
+  else if(a==='mg-email')mgEmail();
   else if(a==='mg-new-bc'){mg.view='bc';render();mgCount()}
   else if(a==='mg-kind'){mg.body=(document.getElementById('mgBody')||{}).value||mg.body;mg.kind=el.dataset.k;render();mgCount()}
   else if(a==='mg-aud'){mg.body=(document.getElementById('mgBody')||{}).value||mg.body;mg.aud=el.dataset.a;render();mgCount()}
@@ -1309,7 +1315,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ui.mode==
 // Nouvelle version du tableau de bord : on ne recharge pas tout seul (une saisie pourrait etre en cours),
 // on affiche un bandeau « Actualiser ». Changer APP_VERSION a chaque modification.
 (function () {
-  var APP_VERSION = '2026-11-05-msg2';
+  var APP_VERSION = '2026-11-05-msg3';
   var busy = false, last = 0;
   function bar(v) {
     if (document.getElementById('pnc-update')) return;
