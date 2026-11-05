@@ -443,9 +443,10 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 
   /* ===== Fiche client ===== */
   async function openByToken(token) {
-    var r = await db.from("clients").select("id").eq("public_token", token).eq("salon_id", S.salon.id).maybeSingle();
-    if (!r.data) { toast("Carte inconnue : ce QR ne correspond à aucun client.", "bad"); return; }
-    openById(r.data.id);
+    // Nouveau QR (clé de scan) ou ancien QR pendant la transition
+    var r = await db.rpc("pro_scan", { p_code: token });
+    if (!r.data || !r.data.ok) { toast("Carte inconnue : ce QR ne correspond à aucun client.", "bad"); return; }
+    openById(r.data.client_id);
   }
   async function openById(id) {
     var c = await db.from("clients").select("id, first_name, last_name, phone, legacy, no_show_count").eq("id", id).single();
