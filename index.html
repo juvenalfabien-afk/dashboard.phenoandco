@@ -1223,7 +1223,7 @@ document.addEventListener('click',e=>{const el=e.target.closest('[data-action="s
 
 /* ================= MESSAGERIE DE LA CARTE (clients ↔ salon) ================= */
 SVG.inbox='M4 5h16v11H8l-4 4zM8 9h8M8 12h5';
-const mg={inbox:null,loading:false,thread:null,cid:null,view:'list',kind:'annonce',aud:'all',count:null,body:'',search:'',smode:'name',busy:false};
+const mg={inbox:null,loading:false,thread:null,cid:null,view:'list',kind:'annonce',aud:'all',count:null,body:'',search:'',smode:'name',busy:false,picks:new Map(),psearch:'',psmode:'name'};
 const MG_TPL={retard:'Petit retard de mon côté, environ 15 minutes. Désolé, je fais au plus vite !',fermeture:'Le salon sera exceptionnellement fermé le [jour]. Réouverture le [jour] à 10h. Merci de votre compréhension !',decalage:'J’ai un imprévu : est-ce que je peux te décaler à [heure] ? Réponds-moi ici.'};
 function mgWaiting(){return mg.inbox?mg.inbox.waiting||0:0}
 function mgLive(){return ui.mode==='live'&&SB&&SB_SALON}
@@ -1238,12 +1238,26 @@ async function mgRefreshThread(){if(mg.view!=='thread'||!mg.cid||!mgLive())retur
 async function mgSend(){const t=document.getElementById('mgText');const body=(t&&t.value||'').trim();if(!body||mg.busy)return;mg.busy=true;
   const r=await SB.rpc('pro_msg_send',{p_client:mg.cid,p_body:body,p_kind:'rdv'});mg.busy=false;
   if(r.error||!r.data||!r.data.ok){toast('Message non envoyé.');return}t.value='';toast('Message envoyé dans la carte du client.');mgOpen(mg.cid)}
-async function mgCount(){if(!mgLive())return;mg.count=null;const r=await SB.rpc('pro_msg_count',{p_kind:mg.kind,p_audience:mg.aud});mg.count=r.data&&r.data.ok?r.data:null;const el=document.getElementById('mgCount');if(el)el.innerHTML=mgCountHTML()}
-function mgCountHTML(){if(!mg.count)return 'Calcul du nombre de clients…';const c=mg.count;return `<strong>${c.total} client${c.total>1?'s':''}</strong> recevront ce message dans leur carte${mg.kind==='promo'?' (seulement ceux qui ont accepté les annonces)':''}.${mg.aud==='yesterday'?'<br>Clients d’hier : RDV hier, tampon reçu hier ou carte ouverte hier.':''}`}
+async function mgCount(){if(!mgLive())return;mg.count=null;if(mg.aud==='pick'&&!mg.picks.size){mg.count={total:0};const el0=document.getElementById('mgCount');if(el0)el0.innerHTML=mgCountHTML();return}const r=mg.aud==='pick'?await SB.rpc('pro_msg_count_pick',{p_kind:mg.kind,p_ids:[...mg.picks.keys()]}):await SB.rpc('pro_msg_count',{p_kind:mg.kind,p_audience:mg.aud});mg.count=r.data&&r.data.ok?r.data:null;const el=document.getElementById('mgCount');if(el)el.innerHTML=mgCountHTML()}
+function mgCountHTML(){if(!mg.count)return 'Calcul du nombre de clients…';const c=mg.count;return `<strong>${c.total} client${c.total>1?'s':''}</strong> recevront ce message dans leur carte${mg.kind==='promo'?' (seulement ceux qui ont accepté les annonces)':''}.${mg.aud==='yesterday'?'<br>Clients d’hier : RDV hier, tampon reçu hier ou carte ouverte hier.':''}${mg.aud==='pick'&&mg.picks.size>c.total?'<br>'+(mg.picks.size-c.total)+' client(s) coché(s) ne le recevront pas (messagerie fermée'+(mg.kind==='promo'?' ou annonces refusées':'')+').':''}`}
+// « Choisir les clients » : recherche (nom ou numéro) parmi les clients qui ont une carte, on coche
+function mgPickFound(){const q=mg.psearch.trim().toLowerCase(),nat=q.replace(/\D/g,'').replace(/^33/,'').replace(/^0/,'');
+  const telOf=c=>String(c.phone||'').replace(/\D/g,'').replace(/^33/,'').replace(/^0/,'');
+  const hasCard=c=>loyalty.cards&&loyalty.cards.has(c.id);
+  if(mg.psmode==='tel')return nat.length>=2?db.clients.filter(c=>hasCard(c)&&telOf(c).startsWith(nat)).slice(0,8):[];
+  return q.length>=2?db.clients.filter(c=>hasCard(c)&&(c.name||'').toLowerCase().includes(q)).slice(0,8):[]}
+function mgPickHTML(){const f=mgPickFound(),n=mg.picks.size;
+  return `<div class="field" style="border:1px solid var(--line);border-radius:14px;padding:12px"><label for="mgPick">Chercher un client (seuls ceux qui ont une carte apparaissent)</label>
+    <div class="row" style="gap:8px;margin-bottom:8px">${btn('Par nom','mg-psmode',mg.psmode==='name'?'check':'',mg.psmode==='name'?'primary':'ghost','data-m="name"')}${btn('Par numéro','mg-psmode',mg.psmode==='tel'?'check':'',mg.psmode==='tel'?'primary':'ghost','data-m="tel"')}</div>
+    <input id="mgPick" ${mg.psmode==='tel'?'type="tel" inputmode="tel" autocomplete="off" placeholder="06 12 34 56 78"':'type="text" inputmode="text" autocapitalize="words" autocomplete="off" placeholder="Prénom ou nom"'} value="${esc(mg.psearch)}">
+    ${f.length?`<div class="stack" style="gap:6px;margin-top:8px">${f.map(c=>{const on=mg.picks.has(c.id);return `<button type="button" class="btn ${on?'primary':'ghost'}" data-action="mg-pick" data-id="${esc(c.id)}" style="justify-content:flex-start">${on?'☑':'☐'} ${esc(c.name)} <span class="hint" style="margin-left:auto">…${esc(String(c.phone||'').replace(/\D/g,'').slice(-4))}</span></button>`}).join('')}</div>`:(mg.psearch.trim().length>=2?'<p class="hint" style="margin-top:8px">Aucun client avec une carte ne correspond.</p>':'')}
+    ${n?`<div class="row wrap" style="gap:6px;margin-top:10px">${[...mg.picks].map(([id,name])=>`<button type="button" class="btn ghost" data-action="mg-pick" data-id="${esc(id)}" style="min-height:34px;padding:4px 12px;border-color:var(--gold)">${esc(name)} ✕</button>`).join('')}</div>`:''}
+    <p class="hint" style="margin-top:8px"><strong>${n} client${n>1?'s':''} choisi${n>1?'s':''}</strong>${n?' · touche ✕ pour en retirer un':''}</p></div>`}
 async function mgBroadcast(){const t=document.getElementById('mgBody');const body=(t&&t.value||'').trim();if(!body){toast('Écris ton message d’abord.');return}
   const n=mg.count?mg.count.total:0;
-  confirmModal('Envoyer à '+n+' client'+(n>1?'s':'')+' ?',`<p style="white-space:pre-wrap">${esc(body)}</p>`,async()=>{const r=await SB.rpc('pro_msg_broadcast',{p_body:body,p_kind:mg.kind,p_audience:mg.aud});
-    if(r.error||!r.data||!r.data.ok){toast('Envoi impossible.');return}mg.body='';toast('Message envoyé à '+r.data.recipients+' client'+(r.data.recipients>1?'s':'')+'.');mg.view='list';mgLoad(true);render()},'Envoyer')}
+  if(mg.aud==='pick'&&!n){toast('Coche au moins un client.');return}
+  confirmModal('Envoyer à '+n+' client'+(n>1?'s':'')+' ?',`<p style="white-space:pre-wrap">${esc(body)}</p>`,async()=>{const r=mg.aud==='pick'?await SB.rpc('pro_msg_broadcast_pick',{p_body:body,p_kind:mg.kind,p_ids:[...mg.picks.keys()]}):await SB.rpc('pro_msg_broadcast',{p_body:body,p_kind:mg.kind,p_audience:mg.aud});
+    if(r.error||!r.data||!r.data.ok){toast('Envoi impossible.');return}mg.body='';mg.picks.clear();mg.psearch='';toast('Message envoyé à '+r.data.recipients+' client'+(r.data.recipients>1?'s':'')+'.');mg.view='list';mgLoad(true);render()},'Envoyer')}
 async function mgToggleAll(){const open=!(mg.inbox&&mg.inbox.open!==false);
   const go=async()=>{const r=await SB.rpc('pro_msg_set_open',{p_open:open});if(r.error||!r.data||!r.data.ok){toast('Réglage impossible.');return}if(mg.inbox)mg.inbox.open=open;toast(open?'Messagerie ouverte : tes clients peuvent t’écrire.':'Messagerie fermée pour tout le monde.');render()};
   if(!open)confirmModal('Fermer la messagerie de tout le monde ?','<p>Tes clients ne pourront plus t’écrire depuis leur carte. Ils verront toujours tes messages, et toi tu peux toujours leur écrire.</p>',go,'Fermer pour tous');else go()}
@@ -1273,7 +1287,7 @@ function renderInbox(){
   if(mg.view==='bc'){
     return html+`<section class="card"><div class="cardhead"><h2>Message groupé</h2>${btn('‹ Retour','mg-back','','ghost')}</div><div class="pad stack">
       <div class="field"><label>Type de message</label><div class="row wrap" style="gap:8px">${btn('Info salon (fermeture, retard…)','mg-kind',mg.kind==='annonce'?'check':'',mg.kind==='annonce'?'primary':'ghost','data-k="annonce"')}${btn('Promo / nouveauté','mg-kind',mg.kind==='promo'?'check':'',mg.kind==='promo'?'primary':'ghost','data-k="promo"')}</div></div>
-      <div class="field"><label>À qui ?</label><div class="row wrap" style="gap:8px">${[['all','Tous les clients'],['week','RDV dans les 7 jours'],['today','RDV aujourd’hui'],['yesterday','Clients d’hier']].map(([k,l])=>btn(l,'mg-aud',mg.aud===k?'check':'',mg.aud===k?'primary':'ghost','data-a="'+k+'"')).join('')}</div></div>
+      <div class="field"><label>À qui ?</label><div class="row wrap" style="gap:8px">${[['all','Tous les clients'],['week','RDV dans les 7 jours'],['today','RDV aujourd’hui'],['yesterday','Clients d’hier'],['pick','Choisir les clients']].map(([k,l])=>btn(l,'mg-aud',mg.aud===k?'check':'',mg.aud===k?'primary':'ghost','data-a="'+k+'"')).join('')}</div></div>${mg.aud==='pick'?mgPickHTML():''}
       <div class="field"><label>Messages tout prêts</label><div class="row wrap" style="gap:8px">${btn('Retard','mg-tpl-bc','','ghost','data-t="retard"')}${btn('Fermeture','mg-tpl-bc','','ghost','data-t="fermeture"')}</div></div>
       <div class="field"><label for="mgBody">Ton message</label><textarea id="mgBody" rows="5" maxlength="1000" placeholder="Écris ton message…">${esc(mg.body)}</textarea></div>
       <p class="hint" id="mgCount">${mgCountHTML()}</p>${btn('Envoyer','mg-bc-send','check','primary')}</div></section>`}
@@ -1303,9 +1317,11 @@ document.addEventListener('click',e=>{const el=e.target.closest('[data-action^="
   else if(a==='mg-tpl'){const t=document.getElementById('mgText');if(t){t.value=MG_TPL[el.dataset.t];t.focus()}}
   else if(a==='mg-tpl-bc'){const t=document.getElementById('mgBody');if(t){t.value=MG_TPL[el.dataset.t];mg.body=t.value;t.focus()}}
   else if(a==='mg-bc-send')mgBroadcast();
+  else if(a==='mg-pick'){mg.body=(document.getElementById('mgBody')||{}).value||mg.body;const id=el.dataset.id;if(mg.picks.has(id))mg.picks.delete(id);else{if(mg.picks.size>=200){toast('200 clients maximum.');return}const c=db.clients.find(x=>x.id===id);mg.picks.set(id,c?c.name:'Client')}render();mgCount()}
+  else if(a==='mg-psmode'){mg.body=(document.getElementById('mgBody')||{}).value||mg.body;mg.psmode=el.dataset.m;mg.psearch='';render();const s=document.getElementById('mgPick');if(s)s.focus()}
   else if(a==='mg-smode'){mg.smode=el.dataset.m;mg.search='';render();const s=document.getElementById('mgSearch');if(s)s.focus()}
 });
-document.addEventListener('input',e=>{if(e.target.id==='mgSearch'){mg.search=e.target.value;const pos=e.target.selectionStart;render();const s=document.getElementById('mgSearch');if(s){s.focus();try{s.setSelectionRange(pos,pos)}catch(x){}}}else if(e.target.id==='mgBody')mg.body=e.target.value});
+document.addEventListener('input',e=>{if(e.target.id==='mgSearch'){mg.search=e.target.value;const pos=e.target.selectionStart;render();const s=document.getElementById('mgSearch');if(s){s.focus();try{s.setSelectionRange(pos,pos)}catch(x){}}}else if(e.target.id==='mgPick'){mg.psearch=e.target.value;const pos=e.target.selectionStart;render();const s=document.getElementById('mgPick');if(s){s.focus();try{s.setSelectionRange(pos,pos)}catch(x){}}}else if(e.target.id==='mgBody')mg.body=e.target.value});
 setInterval(()=>{if(document.hidden||!mgLive())return;if(ui.page==='inbox'&&mg.view==='thread')mgRefreshThread();else if(ui.page!=='inbox'||mg.view==='list')mgLoad(true)},20000);
 setTimeout(()=>mgLoad(true),4000);
 
@@ -1451,7 +1467,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ui.mode==
 // Nouvelle version du tableau de bord : on ne recharge pas tout seul (une saisie pourrait etre en cours),
 // on affiche un bandeau « Actualiser ». Changer APP_VERSION a chaque modification.
 (function () {
-  var APP_VERSION = '2026-11-07-hier1';
+  var APP_VERSION = '2026-11-07-pick1';
   var busy = false, last = 0;
   function bar(v) {
     if (document.getElementById('pnc-update')) return;
