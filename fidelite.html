@@ -169,7 +169,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
           <p class="err" id="scan-err" role="alert"></p>
         </div>
         <div id="p-search">
-          <div class="field"><label for="s-q">Nom ou téléphone</label><input id="s-q" type="search" placeholder="Ex. Ethan ou 06 64…" autocomplete="off"></div>
+          <div class="tabs" id="s-mode" role="group" aria-label="Chercher par"><button type="button" data-m="name" aria-selected="true">Par nom</button><button type="button" data-m="tel" aria-selected="false">Par numéro</button></div>
+          <div class="field"><label for="s-q" id="s-lbl">Prénom ou nom</label><input id="s-q" type="search" inputmode="text" autocapitalize="words" placeholder="Ex. Ethan" autocomplete="off"></div>
           <ul class="results" id="s-res"></ul>
           <p class="note">Pas besoin de scanner : ouvre la fiche du client ici, puis valide son passage avec le bouton d'encaissement.</p>
         </div>
@@ -427,12 +428,29 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   /* ===== Recherche ===== */
   var st = null;
   $("s-q").addEventListener("input", function () { clearTimeout(st); st = setTimeout(search, 250); });
+  // Recherche par nom (clavier lettres) ou par numéro (clavier chiffres)
+  var sMode = "name";
+  $("s-mode").addEventListener("click", function (e) {
+    var b = e.target.closest("[data-m]"); if (!b) return;
+    sMode = b.getAttribute("data-m");
+    this.querySelectorAll("[data-m]").forEach(function (x) { x.setAttribute("aria-selected", String(x === b)); });
+    var i = $("s-q"); i.value = ""; $("s-res").innerHTML = "";
+    if (sMode === "tel") { i.type = "tel"; i.inputMode = "tel"; i.placeholder = "06 12 34 56 78"; $("s-lbl").textContent = "Numéro de téléphone"; }
+    else { i.type = "search"; i.inputMode = "text"; i.placeholder = "Ex. Ethan"; $("s-lbl").textContent = "Prénom ou nom"; }
+    i.focus();
+  });
   async function search() {
     var q = $("s-q").value.trim(), out = $("s-res");
-    if (q.length < 2) { out.innerHTML = ""; return; }
-    var digits = q.replace(/\D/g, ""), query = db.from("clients").select("id, first_name, last_name, phone").eq("salon_id", S.salon.id).limit(25);
-    if (digits.length >= 4) { var tail = digits.replace(/^0/, ""); query = query.ilike("phone", "%" + tail + "%"); }
-    else { var safe = q.replace(/[%,()]/g, " "); query = query.or("first_name.ilike.%" + safe + "%,last_name.ilike.%" + safe + "%"); }
+    var query = db.from("clients").select("id, first_name, last_name, phone").eq("salon_id", S.salon.id).limit(25);
+    if (sMode === "tel") {
+      // Les numéros commencent par ce qui est tapé : « 06 69 » ne sort que les 06 69…
+      var nat = q.replace(/\D/g, "").replace(/^33/, "").replace(/^0/, "");
+      if (nat.length < 2) { out.innerHTML = ""; return; }
+      query = query.like("phone", "+33" + nat + "%");
+    } else {
+      if (q.length < 2) { out.innerHTML = ""; return; }
+      var safe = q.replace(/[%,()]/g, " "); query = query.or("first_name.ilike.%" + safe + "%,last_name.ilike.%" + safe + "%");
+    }
     var r = await query;
     var rows = r.data || [];
     out.innerHTML = rows.length ? rows.map(function (c) {

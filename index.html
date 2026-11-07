@@ -482,7 +482,7 @@ document.addEventListener('submit',async e=>{if(e.target.id!=='sbLoginForm')retu
 
 function renderFidelite(){
   const hash=ui.fidHash?'#'+ui.fidHash:'';ui.fidHash='';
-  return `<iframe id="fidFrame" title="Espace carte de fidélité" src="fidelite.html${hash}" allow="camera" style="display:block;width:100%;min-height:80vh;border:0;border-radius:18px;background:#0B1629"></iframe>`;
+  return `<div class="nvbar">${btn('‹ Retour','nv-back','','ghost')}${btn('Accueil','page','home','ghost','data-page="home"')}<span class="nvsp"></span></div><iframe id="fidFrame" title="Espace carte de fidélité" src="fidelite.html${hash}" allow="camera" style="display:block;width:100%;min-height:80vh;border:0;border-radius:18px;background:#0B1629"></iframe>`;
 }
 function renderFideliteOld(){
   const cards=[...loyalty.cards.values()],now=Date.now();
@@ -1311,6 +1311,7 @@ setTimeout(()=>mgLoad(true),4000);
 
 /* ================= ACCUEIL À TUILES + RETOUR + CODE GÉRANT ================= */
 SVG.home='M3 11l9-8 9 8M5 10v10h14V10M9 20v-6h6v6';
+SVG.bell='M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0';
 document.head.insertAdjacentHTML('beforeend',`<style>
 .nvbar{display:flex;align-items:center;gap:8px;margin:0 0 14px}
 .nvbar .btn{border-radius:999px}
@@ -1365,7 +1366,7 @@ function renderHome(){
   <div class="hm-hello"><img src="${db.settings.logo||'logo.png'}" alt=""><div><b>Bonjour ${esc(db.settings.ownerName||'Phéno')}</b><span class="hint">${esc(day.charAt(0).toUpperCase()+day.slice(1))}</span></div></div>
   <div class="hm-today"><div class="k">Aujourd’hui</div><b>${list.length} rendez-vous${nextTxt?' · '+nextTxt:''}</b>${who?`<span class="hint">${who}</span>`:''}</div>
   <div class="hm-tiles"><button type="button" class="hm-tile main" data-action="page" data-page="agenda">${icon('agenda')}<span>Agenda du jour</span></button>
-  ${T('inbox','Messagerie carte',wait)}${T('annulations','Annulations',cx)}${T('fidelite','Carte de fidélité')}${T('clients','Clients')}${T('caisse','Caisse')}${T('stats','Statistiques')}${T('relances','Relances')}${T('avis','Avis Google')}${T('location','Location de fauteuils')}${T('vacations','Vacances et fermetures')}${T('hours','Horaires')}${T('messages','Messages SMS / WhatsApp')}${T('settings','Paramètres')}</div>`}
+  ${T('inbox','Messagerie carte',wait)}${T('annulations','Annulations',cx)}${T('fidelite','Carte de fidélité')}${T('clients','Clients')}${T('caisse','Caisse')}${T('stats','Statistiques')}${T('relances','Relances')}${T('avis','Avis Google')}${T('location','Location de fauteuils')}${T('vacations','Vacances et fermetures')}${T('hours','Horaires')}${T('messages','Messages SMS / WhatsApp')}${T('settings','Paramètres')}<button type="button" class="hm-tile" data-action="nv-notif">${icon('bell')}<span>Notifications${typeof NF!=='undefined'&&NF.on?' ✅':''}</span></button></div>`}
 // Code gérant à 4 chiffres (verrou rapide de cet appareil)
 const PIN={salt:'pnc_pin_salt',hash:'pnc_pin_hash',last:Date.now(),fails:0,mode:null,first:'',code:''};
 function pinGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
@@ -1402,6 +1403,7 @@ document.addEventListener('click',e=>{const el=e.target.closest('[data-action^="
   else if(a==='nv-lock'){if(pinNeeded())pinShow('unlock');else pinShow('setup')}
   else if(a==='nv-start'){try{localStorage.setItem('pnc_start',el.dataset.p)}catch(x){}render();toast(el.dataset.p==='home'?'Le dashboard s’ouvrira sur l’Accueil.':'Le dashboard s’ouvrira sur l’Agenda.')}
   else if(a==='nv-pinchange')pinShow('change');
+  else if(a==='nv-notif'){mg.view='list';go('inbox');setTimeout(()=>{const c=document.getElementById('nfCard');if(c)c.scrollIntoView({behavior:'smooth',block:'start'})},350)}
 });
 
 /* ================= SON DES MESSAGES + NOTIFICATIONS SUR LE TÉLÉPHONE DE PHENO ================= */
@@ -1433,7 +1435,7 @@ async function nfEnable(){if(NF.busy)return;
 function nfCard(){const c=sdChoice();
   const st=NF.on?'<p class="hint" style="color:var(--gold)">✅ Notifications activées sur ce téléphone.</p>'
     :(nfIOS()&&!nfStandalone()?'<p class="hint">Pour être prévenu appli fermée, ouvre le dashboard depuis son icône sur l’écran d’accueil.</p>':'')+btn('🔔 Activer les notifications','nf-on','','primary');
-  return `<div class="card"><div class="cardhead"><h2>Son et notifications</h2></div><div class="pad stack">${st}
+  return `<div class="card" id="nfCard"><div class="cardhead"><h2>Son et notifications</h2></div><div class="pad stack">${st}
     <div class="field"><label>Son quand un client répond (appli ouverte)</label><div class="row wrap" style="gap:8px">${Object.keys(SD.names).map(k=>btn(SD.names[k],'nf-snd',c===k?'check':'',c===k?'primary':'ghost','data-s="'+k+'"')).join('')}</div></div>
     <p class="hint">La pastille sur l’icône compte les messages en attente. Elle est rouge : c’est l’iPhone qui la dessine.</p></div></div>`}
 document.addEventListener('click',e=>{const el=e.target.closest('[data-action^="nf-"]');if(!el)return;const a=el.dataset.action;
@@ -1449,7 +1451,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ui.mode==
 // Nouvelle version du tableau de bord : on ne recharge pas tout seul (une saisie pourrait etre en cours),
 // on affiche un bandeau « Actualiser ». Changer APP_VERSION a chaque modification.
 (function () {
-  var APP_VERSION = '2026-11-07-son1';
+  var APP_VERSION = '2026-11-07-nav2';
   var busy = false, last = 0;
   function bar(v) {
     if (document.getElementById('pnc-update')) return;
