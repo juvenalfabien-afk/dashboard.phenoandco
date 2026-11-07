@@ -1239,7 +1239,7 @@ async function mgSend(){const t=document.getElementById('mgText');const body=(t&
   const r=await SB.rpc('pro_msg_send',{p_client:mg.cid,p_body:body,p_kind:'rdv'});mg.busy=false;
   if(r.error||!r.data||!r.data.ok){toast('Message non envoyé.');return}t.value='';toast('Message envoyé dans la carte du client.');mgOpen(mg.cid)}
 async function mgCount(){if(!mgLive())return;mg.count=null;const r=await SB.rpc('pro_msg_count',{p_kind:mg.kind,p_audience:mg.aud});mg.count=r.data&&r.data.ok?r.data:null;const el=document.getElementById('mgCount');if(el)el.innerHTML=mgCountHTML()}
-function mgCountHTML(){if(!mg.count)return 'Calcul du nombre de clients…';const c=mg.count;return `<strong>${c.total} client${c.total>1?'s':''}</strong> recevront ce message dans leur carte${mg.kind==='promo'?' (seulement ceux qui ont accepté les annonces)':''}.`}
+function mgCountHTML(){if(!mg.count)return 'Calcul du nombre de clients…';const c=mg.count;return `<strong>${c.total} client${c.total>1?'s':''}</strong> recevront ce message dans leur carte${mg.kind==='promo'?' (seulement ceux qui ont accepté les annonces)':''}.${mg.aud==='yesterday'?'<br>Clients d’hier : RDV hier, tampon reçu hier ou carte ouverte hier.':''}`}
 async function mgBroadcast(){const t=document.getElementById('mgBody');const body=(t&&t.value||'').trim();if(!body){toast('Écris ton message d’abord.');return}
   const n=mg.count?mg.count.total:0;
   confirmModal('Envoyer à '+n+' client'+(n>1?'s':'')+' ?',`<p style="white-space:pre-wrap">${esc(body)}</p>`,async()=>{const r=await SB.rpc('pro_msg_broadcast',{p_body:body,p_kind:mg.kind,p_audience:mg.aud});
@@ -1273,7 +1273,7 @@ function renderInbox(){
   if(mg.view==='bc'){
     return html+`<section class="card"><div class="cardhead"><h2>Message groupé</h2>${btn('‹ Retour','mg-back','','ghost')}</div><div class="pad stack">
       <div class="field"><label>Type de message</label><div class="row wrap" style="gap:8px">${btn('Info salon (fermeture, retard…)','mg-kind',mg.kind==='annonce'?'check':'',mg.kind==='annonce'?'primary':'ghost','data-k="annonce"')}${btn('Promo / nouveauté','mg-kind',mg.kind==='promo'?'check':'',mg.kind==='promo'?'primary':'ghost','data-k="promo"')}</div></div>
-      <div class="field"><label>À qui ?</label><div class="row wrap" style="gap:8px">${[['all','Tous les clients'],['week','RDV dans les 7 jours'],['today','RDV aujourd’hui']].map(([k,l])=>btn(l,'mg-aud',mg.aud===k?'check':'',mg.aud===k?'primary':'ghost','data-a="'+k+'"')).join('')}</div></div>
+      <div class="field"><label>À qui ?</label><div class="row wrap" style="gap:8px">${[['all','Tous les clients'],['week','RDV dans les 7 jours'],['today','RDV aujourd’hui'],['yesterday','Clients d’hier']].map(([k,l])=>btn(l,'mg-aud',mg.aud===k?'check':'',mg.aud===k?'primary':'ghost','data-a="'+k+'"')).join('')}</div></div>
       <div class="field"><label>Messages tout prêts</label><div class="row wrap" style="gap:8px">${btn('Retard','mg-tpl-bc','','ghost','data-t="retard"')}${btn('Fermeture','mg-tpl-bc','','ghost','data-t="fermeture"')}</div></div>
       <div class="field"><label for="mgBody">Ton message</label><textarea id="mgBody" rows="5" maxlength="1000" placeholder="Écris ton message…">${esc(mg.body)}</textarea></div>
       <p class="hint" id="mgCount">${mgCountHTML()}</p>${btn('Envoyer','mg-bc-send','check','primary')}</div></section>`}
@@ -1451,7 +1451,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ui.mode==
 // Nouvelle version du tableau de bord : on ne recharge pas tout seul (une saisie pourrait etre en cours),
 // on affiche un bandeau « Actualiser ». Changer APP_VERSION a chaque modification.
 (function () {
-  var APP_VERSION = '2026-11-07-nav2';
+  var APP_VERSION = '2026-11-07-hier1';
   var busy = false, last = 0;
   function bar(v) {
     if (document.getElementById('pnc-update')) return;
