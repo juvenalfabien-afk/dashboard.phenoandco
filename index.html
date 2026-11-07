@@ -1424,7 +1424,7 @@ async function nfRefresh(){try{if(!nfSupported()||Notification.permission!=='gra
 async function nfEnable(){if(NF.busy)return;
   if(!nfSupported()){toast(nfIOS()&&!nfStandalone()?'Installe d’abord le dashboard sur l’écran d’accueil (Partager → Sur l’écran d’accueil), puis ouvre-le depuis l’icône.':'Ce navigateur ne permet pas les notifications.');return}
   NF.busy=true;try{const perm=await Notification.requestPermission();
-    if(perm!=='granted'){toast('Notifications refusées. Tu peux les réactiver dans Réglages → Notifications.');return}
+    if(perm!=='granted'){toast(nfIOS()?'L’iPhone refuse : ton icône ouvre sans doute une ancienne adresse. Réinstalle le dashboard depuis Safari (dashboard-phenoandco.netlify.app → Partager → Sur l’écran d’accueil), ou autorise-le dans Réglages → Notifications.':'Notifications refusées. Tu peux les réactiver dans les réglages du navigateur.');return}
     const reg=NF.reg||await navigator.serviceWorker.ready;const sub=await reg.pushManager.getSubscription()||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:nfB64(NF.vapid)});
     const j=sub.toJSON();const r=await SB.rpc('pro_push_save',{p_endpoint:j.endpoint,p_p256dh:j.keys.p256dh,p_auth:j.keys.auth});
     if(r.error||!r.data||!r.data.ok){toast('Activation impossible pour le moment.');return}
