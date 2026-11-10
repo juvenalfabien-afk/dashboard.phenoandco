@@ -1363,7 +1363,7 @@ document.head.insertAdjacentHTML('beforeend',`<style>
 // Page d'ouverture : Accueil (tuiles) ou Agenda — réglable dans Paramètres
 function startPage(){try{return localStorage.getItem('pnc_start')==='agenda'?'agenda':'home'}catch(e){return 'home'}}
 ui.page=startPage();
-function startPageCard(){const sp=startPage();return `<section class="card" style="margin-top:18px"><div class="cardhead"><h2>Page d’ouverture</h2></div><div class="pad"><p class="hint" style="margin-bottom:12px">La page qui s’affiche quand tu ouvres le dashboard. Le menu à gauche reste toujours disponible.</p><div class="row wrap" style="gap:8px">${btn('Accueil à tuiles','nv-start',sp==='home'?'check':'',sp==='home'?'primary':'ghost','data-p="home"')}${btn('Agenda','nv-start',sp==='agenda'?'check':'',sp==='agenda'?'primary':'ghost','data-p="agenda"')}</div><p class="hint" style="margin-top:18px;margin-bottom:8px"><strong>Code à 4 chiffres à l’ouverture</strong><br>Demandé une seule fois quand tu ouvres l’appli, jamais pendant que tu travailles.</p><div class="row wrap" style="gap:8px">${btn('Activé','nv-pinon',pinNeeded()?'check':'',pinNeeded()?'primary':'ghost')}${btn('Désactivé','nv-pinoff',!pinNeeded()?'check':'',!pinNeeded()?'primary':'ghost')}${pinNeeded()?btn('Changer mon code','nv-pinchange','lock','ghost'):''}</div></div></section>`}
+function startPageCard(){const sp=startPage();return `<section class="card" style="margin-top:18px"><div class="cardhead"><h2>Page d’ouverture</h2></div><div class="pad"><p class="hint" style="margin-bottom:12px">La page qui s’affiche quand tu ouvres le dashboard. Le menu à gauche reste toujours disponible.</p><div class="row wrap" style="gap:8px">${btn('Accueil à tuiles','nv-start',sp==='home'?'check':'',sp==='home'?'primary':'ghost','data-p="home"')}${btn('Agenda','nv-start',sp==='agenda'?'check':'',sp==='agenda'?'primary':'ghost','data-p="agenda"')}</div></div></section>`}
 // Retour / Accueil en haut de chaque page
 const navHist=[];
 const _goNv=go;go=function(page){if(page&&page!==ui.page){navHist.push(ui.page);if(navHist.length>30)navHist.shift()}_goNv(page)};
@@ -1378,8 +1378,7 @@ function renderHome(){
   const day=now.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
   const wait=typeof mgWaiting==='function'?mgWaiting():0,cx=typeof cx3NewCount==='function'?cx3NewCount():0;
   const T=(id,label,badge)=>`<button type="button" class="hm-tile" data-action="page" data-page="${id}">${badge?`<span class="hm-badge${id==='inbox'?' gold':''}">${badge}</span>`:''}${icon(id)}<span>${txt(label)}</span></button>`;
-  return `<div class="nvbar"><span class="nvsp"></span>${btn('🔒 Verrouiller','nv-lock','','ghost')}</div>
-  <div class="hm-hello"><img src="${db.settings.logo||'logo.png'}" alt=""><div><b>Bonjour ${esc(db.settings.ownerName||'Phéno')}</b><span class="hint">${esc(day.charAt(0).toUpperCase()+day.slice(1))}</span></div></div>
+  return `<div class="hm-hello"><img src="${db.settings.logo||'logo.png'}" alt=""><div><b>Bonjour ${esc(db.settings.ownerName||'Phéno')}</b><span class="hint">${esc(day.charAt(0).toUpperCase()+day.slice(1))}</span></div></div>
   <div class="hm-today"><div class="k">Aujourd’hui</div><b>${list.length} rendez-vous${nextTxt?' · '+nextTxt:''}</b>${who?`<span class="hint">${who}</span>`:''}</div>
   <div class="hm-tiles"><button type="button" class="hm-tile main" data-action="page" data-page="agenda">${icon('agenda')}<span>Agenda du jour</span></button>
   ${T('inbox','Messagerie carte',wait)}${T('annulations','Annulations',cx)}${T('fidelite','Carte de fidélité')}${T('clients','Clients')}${T('caisse','Caisse')}${T('stats','Statistiques')}${T('relances','Relances')}${T('avis','Avis Google')}${T('location','Location de fauteuils')}${T('vacations','Vacances et fermetures')}${T('hours','Horaires')}${T('messages','Messages SMS / WhatsApp')}${T('settings','Paramètres')}<button type="button" class="hm-tile" data-action="nv-notif">${icon('bell')}<span>Notifications${typeof NF!=='undefined'&&NF.on?' ✅':''}</span></button></div>`}
@@ -1409,10 +1408,12 @@ async function pinKey(e){const b=e.target.closest('button');if(!b)return;const e
   if(PIN.first!==code){er.textContent='Les deux codes ne sont pas pareils. Recommence.';PIN.first='';PIN.code='';pinDots();document.getElementById('plSub').textContent='Choisis un code à 4 chiffres.';return}
   pinSet(PIN.hash,await pinHash(code));pinSet(PIN.off,null);pinOk(true);PIN.last=Date.now();document.getElementById('pinLock')?.remove();toast('Code gérant enregistré.');render()}
 async function pinForgot(){pinSet(PIN.hash,null);pinSet(PIN.salt,null);pinSet(PIN.off,null);pinOk(false);document.getElementById('pinLock')?.remove();try{await SB.auth.signOut()}catch(e){}showLogin('Reconnecte-toi, puis choisis un nouveau code gérant.')}
-function pinNeeded(){return !!pinGet(PIN.hash)&&pinGet(PIN.off)!=='1'}
+// Code à 4 chiffres supprimé (10/11/2026) : seule la connexion e-mail + mot de passe protège le dashboard
+function pinNeeded(){return false}
+pinSet(PIN.hash,null);pinSet(PIN.salt,null);pinSet(PIN.off,null);
 // Verrouillé dès l'ouverture (avant d'afficher les données) si un code existe
 if(pinNeeded()&&!pinOk())pinShow('unlock');
-const _afterSessionNv=afterSession;afterSession=async function(){const ok=await _afterSessionNv();if(ok&&!pinGet(PIN.hash)&&pinGet(PIN.off)!=='1'&&!document.getElementById('pinLock'))pinShow('setup');return ok};
+const _afterSessionNv=afterSession;afterSession=async function(){const ok=await _afterSessionNv();return ok};
 ['pointerdown','keydown'].forEach(ev=>document.addEventListener(ev,()=>{if(!document.getElementById('pinLock'))PIN.last=Date.now()},true));
 // Plus de verrou pendant que tu travailles : le code est demandé à l'ouverture de l'appli,
 // ou si l'appli est restée plus de 30 minutes en arrière-plan (= tu la rouvres).
@@ -1474,7 +1475,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ui.mode==
 // Nouvelle version du tableau de bord : on ne recharge pas tout seul (une saisie pourrait etre en cours),
 // on affiche un bandeau « Actualiser ». Changer APP_VERSION a chaque modification.
 (function () {
-  var APP_VERSION = '2026-11-08-pin2';
+  var APP_VERSION = '2026-11-10-nopin';
   var busy = false, last = 0;
   function bar(v) {
     if (document.getElementById('pnc-update')) return;
