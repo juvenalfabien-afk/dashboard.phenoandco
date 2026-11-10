@@ -54,6 +54,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .field{display:grid;gap:6px;margin-bottom:12px}
 .field label{font-size:13px;color:var(--muted);font-weight:600}
 .field input,.field select{width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--coal);color:var(--cream);font-size:16px}
+.expired-box{margin:0 0 12px;padding:12px 14px;border-radius:12px;background:rgba(224,97,79,.14);border:1.5px solid var(--alert);color:var(--cream);font-size:15px;line-height:1.45}
+.expired-box b{color:#F4A598}
 .btn-msg{margin:4px 0 14px;background:transparent;color:#E2C06A;border:1.5px solid rgba(212,179,90,.55)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px 16px;border-radius:12px;border:0;font-weight:700;font-size:16px}
 .btn-gold{background:var(--gold-grad);color:var(--ink)}
@@ -195,6 +197,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
             <div><h3 id="c-name"></h3><div class="meta" id="c-meta"></div></div>
             <span class="badge" id="c-badge"></span>
           </div>
+          <div class="expired-box" id="c-expired" hidden></div>
           <button type="button" class="btn btn-msg" id="c-msg">💬 Lui écrire dans la messagerie</button>
           <div class="stamps" id="c-stamps"></div>
           <div class="note" id="c-note"></div>
@@ -487,8 +490,17 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
       db.from("loyalty_events").select("kind, stamp_no, payment_id, detail, created_at").eq("client_id", id).in("kind", ["stamp", "redeem", "wheel_spin"]).order("created_at", { ascending: false }).limit(12)
     ]);
     S.card = res[0].data || { stamps: 0, cycle: 1, wheel_tokens: 0, total_visits: 0 };
-    S.rewards = res[1].data || [];
+    var nowT = Date.now(), lateCoupe = null;
+    S.rewards = (res[1].data || []).filter(function (x) { var late = x.expires_at && new Date(x.expires_at).getTime() < nowT; if (late && x.type === "coupe") lateCoupe = x.expires_at; return !late; });
     S.events = res[3].data || [];
+    S.expiredAt = null;
+    if (S.card.stamps >= 9 && !S.rewards.some(function (x) { return x.type === "coupe"; })) {
+      if (lateCoupe) S.expiredAt = lateCoupe;
+      else { var ex = await db.from("rewards").select("expires_at").eq("client_id", id).eq("type", "coupe").eq("status", "expired").order("expires_at", { ascending: false }).limit(1); if (ex.data && ex.data[0]) S.expiredAt = ex.data[0].expires_at; }
+    }
+    var eb = $("c-expired");
+    if (S.expiredAt) { eb.hidden = false; eb.innerHTML = "⛔ <b>Coupe offerte expirée le " + new Date(S.expiredAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long" }) + ".</b> Elle ne peut plus être offerte. Le prochain passage payé redémarre sa carte (1er tampon)."; }
+    else { eb.hidden = true; eb.textContent = ""; }
     renderClient(res[2].data || []);
   }
   // Rafraîchissement automatique de la carte affichée (roue lancée sur le téléphone du client, etc.)
@@ -503,7 +515,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
         db.from("rewards").select("id, type, label, code, expires_at, earned_at").eq("client_id", id).eq("status", "available").order("earned_at")
       ]);
       if (!S.client || S.client.id !== id || res[0].error || res[1].error) return;
-      var before = JSON.stringify([S.card, S.rewards]), after = JSON.stringify([res[0].data || S.card, res[1].data || []]);
+      var before = JSON.stringify([S.card, S.rewards]), after = JSON.stringify([res[0].data || S.card, (res[1].data || []).filter(function (x) { return !(x.expires_at && new Date(x.expires_at).getTime() < Date.now()); })]);
       if (before !== after) {
         var oldStamps = S.card.stamps;
         await refreshClient();
@@ -583,7 +595,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     else if (method === "card") card = total;
     else { cash = cents($("v-cash").value); if (!isFinite(cash) || cash < 0 || cash > total) { err.textContent = "Indique la part payée en espèces (entre 0 et le total)."; return; } card = total - cash; }
     var svc = currentService();
-    var before = S.card.stamps, tokensBefore = S.card.wheel_tokens;
+    var before = S.card.stamps, tokensBefore = S.card.wheel_tokens; S.expiredBefore = S.expiredAt;
     var stampedNow = S.justStamped === S.client.id;
     btn.disabled = true;
     var r = await db.from("payments").insert({
@@ -614,6 +626,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
       var msg = (viaPay ? "Encaissé · " : "") + "Tampon " + Math.min(d.stamps, 9) + "/9 ajouté";
       if (d.wheel) msg += " · tour de roue débloqué sur son téléphone !";
       if (d.reward) msg += " · coupe offerte gagnée !";
+      if (S.expiredBefore) msg += " · sa coupe offerte avait expiré : nouvelle carte démarrée";
+      S.expiredBefore = null;
       toast(msg, "ok");
     } else if (d.reason === "deja_aujourdhui") {
       $("v-force").hidden = false;
@@ -624,7 +638,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
   }
   async function manualStamp(force) {
     if (!S.client) return;
-    var b = force ? $("b-force") : $("b-stamp"); b.disabled = true;
+    var b = force ? $("b-force") : $("b-stamp"); b.disabled = true; S.expiredBefore = S.expiredAt;
     var r = await db.rpc("pro_add_stamp", { p_client: S.client.id, p_force: !!force });
     b.disabled = false;
     if (r.error) { toast("Tampon non ajouté : " + r.error.message, "bad"); return; }
@@ -636,7 +650,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     if (!S.coupeId) { manualStamp(false); return; }
     var b = $("b-stamp"); b.disabled = true;
     var r = await db.rpc("redeem_reward", { p_reward: S.coupeId });
-    if (r.error || !r.data || !r.data.ok) { toast(r.data && r.data.error === "expiree" ? "Cette coupe offerte a expiré." : "Impossible de valider la coupe offerte.", "bad"); b.disabled = false; await refreshClient(); return; }
+    if (r.error || !r.data || !r.data.ok) { toast(r.data && r.data.error === "expiree" ? "⛔ Cette coupe offerte a expiré : elle ne peut plus être offerte." : "Impossible de valider la coupe offerte.", "bad"); b.disabled = false; await refreshClient(); return; }
     toast("10e coupe offerte validée. Sa nouvelle carte démarre !", "ok");
     await refreshClient();
   });
