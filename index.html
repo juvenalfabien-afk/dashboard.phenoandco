@@ -832,7 +832,7 @@ case 'remove-logo':db.settings.logo='';writeDB();render();break;
 case 'remove-background':db.settings.background='';writeDB();render();break;
 case 'save-template':db.settings.retard=document.getElementById('retardTemplate').value;if(writeDB())toast(t('Enregistré sur cet appareil.'));break;
 }});
-window.addEventListener('message',e=>{if(e.origin===location.origin&&e.data&&e.data.pncNav==='caisse'){ui.page='caisse';ui.cv='day';ui.date=today();render();scrollTo(0,0);return}if(e.origin!==location.origin||!e.data||!e.data.pncFidHeight)return;const f=document.getElementById('fidFrame');if(f)f.style.height=Math.max(500,e.data.pncFidHeight)+'px'});
+window.addEventListener('message',e=>{if(e.origin===location.origin&&e.data&&e.data.pncNav==='msg'&&/^[0-9a-f-]{36}$/i.test(e.data.id||'')){go('inbox');mgOpen(e.data.id);return}if(e.origin===location.origin&&e.data&&e.data.pncNav==='caisse'){ui.page='caisse';ui.cv='day';ui.date=today();render();scrollTo(0,0);return}if(e.origin!==location.origin||!e.data||!e.data.pncFidHeight)return;const f=document.getElementById('fidFrame');if(f)f.style.height=Math.max(500,e.data.pncFidHeight)+'px'});
 document.getElementById('scrim').onclick=()=>{document.getElementById('sidebar').classList.remove('open');document.getElementById('scrim').classList.remove('open')};
 document.addEventListener('input',e=>{const x=e.target;switch(x.id){case 'clientQuery':ui.query=x.value;ui.pageNo=0;document.getElementById('clientResults').innerHTML=clientRows();scheduleBackendSearch(x.value);break;case 'messageText':ui.message=x.value;{const r=document.getElementById('recipients');if(r)r.innerHTML=recipientHTML()}break;case 'vacStart':ui.vacStart=x.value;break;case 'vacEnd':ui.vacEnd=x.value;break;case 'bookClientQuery':showBookMatches(x.value);scheduleBackendSearch(x.value);break}if(x.dataset.weekday!==undefined){const day=x.dataset.weekday,prop=x.dataset.prop;ui.weeklyDraft[day][prop]=prop==='closed'?x.checked:x.value;if(prop==='closed'){const row=x.closest('.weekdayrow');row.querySelectorAll('input[type=time]').forEach(t=>t.disabled=x.checked)}}});
 document.addEventListener('change',e=>{const x=e.target;switch(x.id){case 'language':{const keep={};for(const id of ['salonName','ownerName','brandSubtitle','salonPhone','salonEmail','salonAddress','retardTemplate']){const el=document.getElementById(id);if(el)keep[id]=el.value}ui.lang=x.value;db.settings.lang=ui.lang;writeDB();if(document.getElementById('modal').open)closeModal();render();for(const [id,value]of Object.entries(keep)){const el=document.getElementById(id);if(el)el.value=value}break;}case 'hourDate':dateChange(x.value);break;case 'messageDate':if(validDate(x.value)){ui.msgDate=x.value;ui.msgSlots.clear();render()}break;case 'smsChannel':ui.sms=x.checked;break;case 'emailChannel':ui.email=x.checked;break;case 'bookDate':fillBookSlots();break;case 'csvFile':importFile(x.files[0]);break;case 'backupFile':restoreBackup(x.files[0]);break;case 'logoFile':setImage(x.files[0],'logo');break;case 'backgroundFile':setImage(x.files[0],'background');break;case 'accentColor':db.settings.accent=x.value;writeDB();renderChrome();break}});
@@ -1274,12 +1274,13 @@ function renderInbox(){
   if(!mgLive())return heading('Messagerie carte','Les messages avec tes clients, dans leur carte de fidélité')+`<div class="notice">Connecte-toi au mode en ligne pour voir la messagerie.</div>`;
   if(!mg.inbox){mgLoad();return heading('Messagerie carte','Les messages avec tes clients, dans leur carte de fidélité')+`<div class="card"><div class="pad"><p class="hint">Chargement…</p></div></div>`}
   const open=mg.inbox.open!==false;
-  const actions=`${btn(open?'Messagerie ouverte · fermer pour tous':'Messagerie fermée · rouvrir',"mg-toggle",open?'check':'lock',open?'ghost':'danger')}${btn('Message groupé','mg-new-bc','','primary')}`;
+  if(mg.rwMsg===undefined){mg.rwMsg=null;SB.rpc('pro_reward_msg_set',{p_on:null}).then(r=>{if(r&&r.data&&r.data.ok){mg.rwMsg=!!r.data.on;if(ui.page==='inbox')render()}})}
+  const actions=`${btn(open?'Messagerie ouverte · fermer pour tous':'Messagerie fermée · rouvrir',"mg-toggle",open?'check':'lock',open?'ghost':'danger')}${mg.rwMsg===null?'':btn(mg.rwMsg?'Message « coupe offerte expirée » : activé':'Message « coupe offerte expirée » : désactivé','mg-rwmsg',mg.rwMsg?'check':'lock','ghost')}${btn('Message groupé','mg-new-bc','','primary')}`;
   let html=heading('Messagerie carte','Tes clients te répondent quand ils veulent, toi tu réponds quand tu as le temps.',actions);
   if(!open)html+=`<div class="notice error" style="margin-bottom:14px">${icon('lock')}<span>La messagerie est fermée : tes clients ne peuvent pas t’écrire. Tu peux toujours leur envoyer des messages.</span></div>`;
   if(mg.view==='thread'){const t=mg.thread;
     if(!t)return html+`<div class="card"><div class="pad"><p class="hint">Chargement…</p></div></div>`;
-    return html+`<section class="card"><div class="cardhead"><div><h2>${esc(t.name||'Client')}</h2><p class="hint">${esc(t.phone||'')} · ${esc(t.email||'pas d’e-mail')} · ${t.has_pin?'carte protégée par un code':'pas encore de code'} · ${t.devices} téléphone${t.devices>1?'s':''} connecté${t.devices>1?'s':''}</p></div>${btn('‹ Retour','mg-back','','ghost')}</div>
+    return html+`<section class="card"><div class="cardhead"><div><h2>${esc(t.name||'Client')}</h2><p class="hint">${esc(t.phone||'')} · ${esc(t.email||'pas d’e-mail')} · ${t.has_pin?'carte protégée par un code':'pas encore de code'} · ${t.devices} téléphone${t.devices>1?'s':''} connecté${t.devices>1?'s':''}</p></div><div class="row wrap" style="gap:8px">${btn('🎁 Sa carte de fidélité','mg-fid','','primary')}${btn('‹ Retour','mg-back','','ghost')}</div></div>
       <div id="mgThread" class="pad" style="display:flex;flex-direction:column;gap:8px;max-height:52vh;overflow-y:auto">${t.messages.length?t.messages.map(mgBubble).join(''):'<p class="hint">Aucun message pour l’instant.</p>'}</div>
       <div class="pad stack" style="border-top:1px solid var(--line)"><div class="row wrap" style="gap:8px">${btn('Retard','mg-tpl','','ghost','data-t="retard"')}${btn('Décalage','mg-tpl','','ghost','data-t="decalage"')}</div>
       <textarea id="mgText" rows="3" maxlength="1000" placeholder="Écris ton message…"></textarea>${btn('Envoyer dans sa carte','mg-send','check','primary')}
@@ -1305,9 +1306,11 @@ function renderInbox(){
   </div></section><aside class="stack" style="gap:14px">${nfCard()}<div class="card"><div class="cardhead"><h2>Derniers messages groupés</h2></div><div class="pad stack">${bcs.length?bcs.map(b=>`<div style="border-bottom:1px solid var(--line);padding-bottom:10px"><div class="hint">${mgWhen(b.at)} · ${b.recipients} client${b.recipients>1?'s':''} · ${b.kind==='promo'?'promo':'info salon'}</div><div style="white-space:pre-wrap">${esc(b.body)}</div></div>`).join(''):'<p class="hint">Aucun message groupé envoyé.</p>'}</div></div></aside></div>`}
 document.addEventListener('click',e=>{const el=e.target.closest('[data-action^="mg-"]');if(!el||el.disabled)return;const a=el.dataset.action;
   if(a==='mg-open')mgOpen(el.dataset.id);
+  else if(a==='mg-fid'){if(mg.cid){ui.fidHash='c='+mg.cid;go('fidelite')}}
   else if(a==='mg-back'){mg.view='list';mg.thread=null;mg.cid=null;render();mgLoad(true)}
   else if(a==='mg-send')mgSend();
   else if(a==='mg-toggle')mgToggleAll();
+  else if(a==='mg-rwmsg'&&mg.rwMsg!==null){const on=!mg.rwMsg;SB.rpc('pro_reward_msg_set',{p_on:on}).then(r=>{if(r&&r.data&&r.data.ok){mg.rwMsg=!!r.data.on;toast(mg.rwMsg?'Activé : le client est prévenu dans sa messagerie quand sa coupe offerte expire.':'Désactivé : plus de message automatique quand une coupe offerte expire.');render()}else toast('Impossible de changer ce réglage.')})}
   else if(a==='mg-block')mgBlock();
   else if(a==='mg-pin')mgPinReset();
   else if(a==='mg-email')mgEmail();
@@ -1475,7 +1478,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ui.mode==
 // Nouvelle version du tableau de bord : on ne recharge pas tout seul (une saisie pourrait etre en cours),
 // on affiche un bandeau « Actualiser ». Changer APP_VERSION a chaque modification.
 (function () {
-  var APP_VERSION = '2026-11-10-nopin';
+  var APP_VERSION = '2026-11-10-raccourcis1';
   var busy = false, last = 0;
   function bar(v) {
     if (document.getElementById('pnc-update')) return;

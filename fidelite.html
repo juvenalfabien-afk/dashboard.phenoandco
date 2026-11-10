@@ -54,6 +54,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
 .field{display:grid;gap:6px;margin-bottom:12px}
 .field label{font-size:13px;color:var(--muted);font-weight:600}
 .field input,.field select{width:100%;padding:13px 14px;border-radius:12px;border:1px solid var(--line);background:var(--coal);color:var(--cream);font-size:16px}
+.btn-msg{margin:4px 0 14px;background:transparent;color:#E2C06A;border:1.5px solid rgba(212,179,90,.55)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:14px 16px;border-radius:12px;border:0;font-weight:700;font-size:16px}
 .btn-gold{background:var(--gold-grad);color:var(--ink)}
 .btn-ok{background:var(--ok);color:#06210f}
@@ -194,6 +195,7 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
             <div><h3 id="c-name"></h3><div class="meta" id="c-meta"></div></div>
             <span class="badge" id="c-badge"></span>
           </div>
+          <button type="button" class="btn btn-msg" id="c-msg">💬 Lui écrire dans la messagerie</button>
           <div class="stamps" id="c-stamps"></div>
           <div class="note" id="c-note"></div>
 
@@ -466,6 +468,8 @@ button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid 
     if (!r.data || !r.data.ok) { toast("Carte inconnue : ce QR ne correspond à aucun client.", "bad"); return; }
     openById(r.data.client_id);
   }
+  if (window.parent === window) $("c-msg").hidden = true;
+  $("c-msg").addEventListener("click", function () { if (S.client && S.client.id) { try { parent.postMessage({ pncNav: "msg", id: S.client.id }, location.origin); } catch (e) {} } });
   async function openById(id) {
     var c = await db.from("clients").select("id, first_name, last_name, phone, legacy, no_show_count").eq("id", id).single();
     if (c.error) { toast("Impossible d'ouvrir la fiche.", "bad"); return; }
