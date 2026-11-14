@@ -1510,7 +1510,7 @@ function renderHome(){
   return `<div class="hm-hello"><img src="${db.settings.logo||'logo.png'}" alt=""><div><b>Bonjour ${esc(db.settings.ownerName||'Phéno')}</b><span class="hint">${esc(day.charAt(0).toUpperCase()+day.slice(1))}</span></div></div>
   <div class="hm-today"><div class="k">Aujourd’hui</div><b>${list.length} rendez-vous${nextTxt?' · '+nextTxt:''}</b>${who?`<span class="hint">${who}</span>`:''}</div>
   <div class="hm-tiles"><button type="button" class="hm-tile main" data-action="page" data-page="agenda">${icon('agenda')}<span>Agenda du jour</span></button>
-  ${T('inbox','Messagerie carte',wait)}${T('annulations','Annulations',cx)}${T('fidelite','Carte de fidélité')}${T('clients','Clients')}${T('caisse','Caisse')}${T('stats','Statistiques')}${T('relances','Relances')}${T('avis','Avis Google')}${T('location','Location de fauteuils')}${T('vacations','Vacances et fermetures')}${T('hours','Horaires')}${T('messages','Messages SMS / WhatsApp')}${T('settings','Paramètres')}<button type="button" class="hm-tile" data-action="nv-notif">${icon('bell')}<span>Notifications${typeof NF!=='undefined'&&NF.on?' ✅':''}</span></button></div>`}
+  ${T('inbox','Messagerie carte',wait)}${T('annulations','Annulations',cx)}${T('fidelite','Carte de fidélité')}${T('clients','Clients')}${T('caisse','Caisse')}${T('stats','Statistiques')}${T('relances','Relances')}${T('avis','Avis Google')}${T('location','Location de fauteuils')}${T('vacations','Vacances et fermetures')}${T('hours','Horaires')}${T('messages','Messages SMS / WhatsApp')}${T('site','Site & SEO')}${T('settings','Paramètres')}<button type="button" class="hm-tile" data-action="nv-notif">${icon('bell')}<span>Notifications${typeof NF!=='undefined'&&NF.on?' ✅':''}</span></button></div>`}
 // Code gérant à 4 chiffres (verrou rapide de cet appareil)
 const PIN={salt:'pnc_pin_salt',hash:'pnc_pin_hash',off:'pnc_pin_off',last:Date.now(),fails:0,mode:null,first:'',code:''};
 // Déverrouillé pour cette ouverture de l'appli (effacé quand l'appli est fermée)
@@ -1604,7 +1604,7 @@ document.addEventListener('visibilitychange',()=>{if(!document.hidden&&ui.mode==
 // Nouvelle version du tableau de bord : on ne recharge pas tout seul (une saisie pourrait etre en cours),
 // on affiche un bandeau « Actualiser ». Changer APP_VERSION a chaque modification.
 (function () {
-  var APP_VERSION = '2026-11-10-expire1';
+  var APP_VERSION = '2026-11-14-siteseo1';
   var busy = false, last = 0;
   function bar(v) {
     if (document.getElementById('pnc-update')) return;
