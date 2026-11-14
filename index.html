@@ -40,6 +40,132 @@
 const VERSION='1.1', STORE='phenoco-studio-v1';
 const SVG={fidelite:'M20 12v8H4v-8M2 7h20v5H2zM12 22V7m0 0H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7m0 0h4.5a2.5 2.5 0 1 0 0-5C13 2 12 7 12 7',caisse:'M3 7h18v12H3zM3 11h18M7 15h3M16 3H8l-1 4h10z',agenda:'M8 2v4m8-4v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2m3 10h3m3 0h2m-8 3h3',clients:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m14-16a4 4 0 0 1 0 8m6 8v-2a4 4 0 0 0-3-3.87M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8',vacations:'M3 21h18M8 21V9m0 4 8-7m-8 3C2 10 2 4 7 4m1 5C8 2 15 1 16 6m-8 3c6-1 10 1 10 5m-10-5c-4 2-4 6-2 8',hours:'M12 8v4l3 2M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20',messages:'M21 15a3 3 0 0 1-3 3H8l-5 4V5a3 3 0 0 1 3-3h12a3 3 0 0 1 3 3zm-14-7h10M7 12h7',settings:'M9 3h6l1 3 3 1 2 5-2 5-3 1-1 3H9l-1-3-3-1-2-5 2-5 3-1zm3 6a3 3 0 1 0 0 6 3 3 0 0 0 0-6',search:'m21 21-5-5M10 18a8 8 0 1 0 0-16 8 8 0 0 0 0 16',plus:'M12 5v14M5 12h14',left:'m14 6-6 6 6 6',right:'m10 6 6 6-6 6',check:'m5 12 4 4L19 6',close:'m6 6 12 12M6 18 18 6',lock:'M6 10V7a6 6 0 0 1 12 0v3M4 10h16v12H4zm8 5v3',info:'M12 11v6m0-10h.01M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20',phone:'M5 3h4l2 5-3 2a14 14 0 0 0 6 6l2-3 5 2v4a2 2 0 0 1-2 2C9 21 3 15 3 5a2 2 0 0 1 2-2',mail:'M3 4h18v16H3zm0 1 9 8 9-8',arrow:'M7 17 17 7M7 7h10v10',menu:'M4 6h16M4 12h16M4 18h16',download:'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',upload:'M12 16V4m-5 5 5-5 5 5M4 16v5h16v-5',copy:'M8 8h13v13H8zM16 8V3H3v13h5',undo:'M4 4v6h6M4 10a8 8 0 1 1 2 9',book:'M3 3h7a2 2 0 0 1 2 2v17a3 3 0 0 0-3-2H3zm18 0h-7a2 2 0 0 0-2 2v17a3 3 0 0 1 3-2h6z'};
 function icon(k){return `<svg class="icon" aria-hidden="true" viewBox="0 0 24 24"><path d="${SVG[k]||SVG.info}"/></svg>`}
+/* ===== Site & SEO : textes, pastilles, photos et Google du site public (table site_content + photos site-photos) ===== */
+SVG.site='M3 5h18v14H3zM3 9h18M7 7h.01M10 7h.01';
+const ST_SLUG='phenoandco',ST_SITE='https://phenoandco.netlify.app',ST_BUCKET='site-photos';
+const st={loaded:false,loading:false,data:null,saved:'',salon:null,busy:false,open:{accueil:true},err:''};
+const stSec=[['accueil','Accueil','Les boutons sous le logo'],['presta','Prestations','Titre, signature et pastilles'],['pourquoi','Pourquoi PHENO&CO','Les points de ton histoire'],['photos','Photos','La galerie, sans texte dessus'],['histoire','Notre histoire','Ton récit et les photos du salon'],['cta','Appel à réserver','Le bloc avant « Venez nous voir »'],['seo','Google','Ce que Google affiche et lit']];
+function stUrl(u){return !u?'':/^https?:/.test(u)?u:ST_SITE+u}
+function stDirty(){return !!(st.loaded&&st.data&&JSON.stringify(st.data)!==st.saved)}
+function stDefaults(c){c=c&&typeof c==='object'?c:{};
+  const o=(k,d)=>{c[k]=Object.assign(d,c[k]||{})};
+  o('accueil',{on:true,rdv:'Prendre rendez-vous',cowork:'Coworking coiffure',deja:'Déjà client ? Retrouve tes infos'});
+  o('presta',{on:true,titre:'',signature:'',items:[]});o('pourquoi',{on:true,titre:'',items:[]});
+  o('photos',{on:true,titre:'',list:[]});o('histoire',{on:true,titre:'',intro:'',texte:'',fin:'',photo:''});
+  o('cta',{on:true,titre:'',texte:''});o('trouver',{photo:''});o('seo',{titre:'',desc:'',mots:''});
+  ['presta','pourquoi'].forEach(k=>{if(!Array.isArray(c[k].items))c[k].items=[]});if(!Array.isArray(c.photos.list))c.photos.list=[];return c}
+async function stLoad(){if(st.loading)return;st.loading=true;st.err='';
+  try{if(!SB)throw 0;
+    const r=await SB.rpc('site_content_get',{p_salon:ST_SLUG});if(r.error)throw r.error;
+    const m=await SB.from('salon_members').select('salon_id').eq('role','owner').limit(1);
+    st.salon=m.data&&m.data[0]?m.data[0].salon_id:null;
+    st.data=stDefaults(r.data);st.saved=JSON.stringify(st.data);st.loaded=true}
+  catch(e){st.err='Impossible de charger le contenu du site. Vérifie ta connexion et réessaie.'}
+  st.loading=false;if(ui.page==='site')render()}
+function stGet(p){return p.split('.').reduce((o,k)=>o==null?o:o[k],st.data)}
+function stSet(p,v){const a=p.split('.'),last=a.pop();const o=a.reduce((x,k)=>x[k],st.data);o[last]=v}
+function stField(label,p,o={}){const v=stGet(p)??'',id='st_'+p.replace(/\W/g,'_'),max=o.max?` data-max="${o.max}"`:'',lim=` maxlength="${o.limit||(o.area?6000:160)}"`;
+  const inp=o.area?`<textarea id="${id}" class="st-in" data-st-in="${p}"${max}${lim} rows="${o.rows||4}">${esc(v)}</textarea>`:`<input id="${id}" class="st-in" type="text" autocapitalize="sentences" data-st-in="${p}"${max}${lim} value="${esc(v)}">`;
+  return `<div class="field st-f"><label for="${id}">${esc(label)}</label>${inp}${o.max?`<small class="st-count" data-for="${id}"></small>`:''}</div>`}
+function stToggle(k,txtLbl){const on=st.data[k].on!==false;return `<div class="st-tog"><div><strong>Afficher sur le site</strong><span>${esc(txtLbl)}</span></div><label class="st-sw"><input type="checkbox" data-st-tog="${k}" ${on?'checked':''}><span class="st-track"></span><span class="st-state">${on?'Affiché':'Masqué'}</span></label></div>`}
+function stList(k){const a=st.data[k].items,word=k==='presta'?'Pastille':'Point',lt=k==='presta'?'Nom de la pastille':'Titre du point',ls=k==='presta'?'Petite ligne en dessous':'Texte';
+  return a.map((it,i)=>`<div class="st-item"><div class="st-ih"><strong>${word} ${i+1}</strong><button type="button" class="btn ghost st-mini" data-st="mv" data-k="${k}" data-i="${i}" data-d="-1" aria-label="Monter" ${i===0?'disabled':''}>↑</button><button type="button" class="btn ghost st-mini" data-st="mv" data-k="${k}" data-i="${i}" data-d="1" aria-label="Descendre" ${i===a.length-1?'disabled':''}>↓</button><button type="button" class="btn ghost st-mini st-del" data-st="rm" data-k="${k}" data-i="${i}">Supprimer</button></div>${stField(lt,k+'.items.'+i+'.t',{limit:80})}${stField(ls,k+'.items.'+i+'.s',{area:k==='pourquoi',rows:3,limit:600})}</div>`).join('')+(a.length<20?`<button type="button" class="st-add" data-st="add" data-k="${k}">+ Ajouter ${k==='presta'?'une pastille':'un point'}</button>`:'')}
+function stPhotos(){const a=st.data.photos.list;
+  return `<div class="st-photos">${a.map((u,i)=>`<div class="st-ph"><img src="${esc(stUrl(u))}" alt="Photo ${i+1}" loading="lazy"><span class="st-n">${i+1}</span><div class="st-acts"><button type="button" class="btn ghost st-mini" data-st="pmv" data-i="${i}" data-d="-1" aria-label="Avancer" ${i===0?'disabled':''}>↑</button><button type="button" class="btn ghost st-mini" data-st="pmv" data-i="${i}" data-d="1" aria-label="Reculer" ${i===a.length-1?'disabled':''}>↓</button><label class="btn ghost st-mini">Remplacer<input type="file" accept="image/jpeg,image/png,image/webp" data-st-file="rep" data-i="${i}" hidden></label><button type="button" class="btn ghost st-mini st-del" data-st="prm" data-i="${i}">Retirer</button></div></div>`).join('')}</div>${a.length<40?`<label class="st-add">+ Ajouter des photos<input type="file" accept="image/jpeg,image/png,image/webp" multiple data-st-file="add" hidden></label>`:''}<p class="hint" style="margin-top:10px">Pour Google, chaque photo reçoit toute seule une description invisible. Tu n’as rien à écrire.</p>`}
+function stOnePhoto(label,p){const u=stGet(p);return `<div class="st-one"><span class="st-onel">${esc(label)}</span>${u?`<img src="${esc(stUrl(u))}" alt="${esc(label)}" loading="lazy">`:'<div class="st-none">Aucune photo</div>'}<label class="btn ghost st-mini">Remplacer la photo<input type="file" accept="image/jpeg,image/png,image/webp" data-st-file="one" data-p="${p}" hidden></label></div>`}
+function stBody(k){const d=st.data;switch(k){
+  case 'accueil':return '<p class="hint" style="margin-top:12px">Les boutons restent toujours affichés : ce sont eux qui mènent à la réservation.</p>'+stField('Bouton principal','accueil.rdv',{limit:40})+stField('Deuxième bouton','accueil.cowork',{limit:40})+stField('Lien pour les clients déjà inscrits','accueil.deja',{limit:60});
+  case 'presta':return stToggle(k,'La section « Ce qu’on fait »')+stField('Titre','presta.titre',{limit:80})+stField('Ta signature (écriture manuscrite)','presta.signature',{limit:120})+stList('presta');
+  case 'pourquoi':return stToggle(k,'La section « Pourquoi »')+stField('Titre','pourquoi.titre',{limit:80})+stList('pourquoi');
+  case 'photos':return stToggle(k,'La galerie de photos')+stField('Titre','photos.titre',{limit:80})+stPhotos();
+  case 'histoire':return stToggle(k,'La section « Notre histoire »')+stField('Titre','histoire.titre',{limit:80})+stField('Première phrase (en grand)','histoire.intro',{limit:200})+stField('Ton histoire (saute une ligne pour un nouveau paragraphe)','histoire.texte',{area:true,rows:10})+stField('Phrase de fin','histoire.fin',{limit:160})+`<div class="st-two">${stOnePhoto('Photo de l’histoire','histoire.photo')}${stOnePhoto('Photo « Venez nous voir »','trouver.photo')}</div>`;
+  case 'cta':return stToggle(k,'Le bloc « Prêt pour votre prochaine coupe ? »')+stField('Titre','cta.titre',{limit:80})+stField('Texte','cta.texte',{area:true,rows:3,limit:300});
+  case 'seo':return stField('Titre dans Google','seo.titre',{max:60,limit:120})+stField('Description dans Google','seo.desc',{area:true,rows:3,max:155,limit:300})+`<div class="st-gl">Aperçu dans Google</div><div class="st-gprev" id="stGprev"></div>`+stField('Mots-clés (la ligne discrète en bas du site, séparés par des virgules)','seo.mots',{area:true,rows:5,limit:2000})}}
+function stSub(k){const d=st.data;return k==='presta'?d.presta.items.length+' pastille(s) · titre et signature':k==='pourquoi'?d.pourquoi.items.length+' point(s)':k==='photos'?d.photos.list.length+' photo(s) · sans texte dessus':stSec.find(s=>s[0]===k)[2]}
+function renderSite(){
+  if(!st.loaded){if(!st.loading)setTimeout(stLoad,0);return heading('Site & SEO','Ce que tes clients et Google voient.')+`<section class="card"><div class="pad">${st.err?`<div class="notice error">${esc(st.err)}</div><button class="btn primary" style="margin-top:12px" data-st="reload">Réessayer</button>`:'<p class="hint">Chargement du contenu du site…</p>'}</div></section>`}
+  const dirty=stDirty();
+  return heading('Site & SEO','Ce que tes clients et Google voient.',`<a class="btn ghost" href="${ST_SITE}" target="_blank" rel="noopener">Voir le site</a>`)+`<div id="stRoot">${stSec.map(([k,t])=>`<section class="card st-sec ${st.open[k]?'open':''}"><button type="button" class="st-h" data-st="open" data-k="${k}" aria-expanded="${!!st.open[k]}"><span class="st-t"><strong>${esc(t)}</strong><span>${esc(stSub(k))}</span></span>${k!=='seo'&&st.data[k].on===false?'<span class="tag">Masqué</span>':''}<span class="st-chev">›</span></button>${st.open[k]?`<div class="st-b">${stBody(k)}</div>`:''}</section>`).join('')}
+  <div class="savebar st-save"><div><strong class="small" id="stState">${st.busy?'Envoi en cours…':dirty?'Changements non enregistrés':'Tout est enregistré'}</strong><p>Ton site se met à jour tout seul, sans publication.</p></div><button class="btn primary" data-st="save" ${!dirty||st.busy?'disabled':''}>Enregistrer</button></div></div>`}
+function stAfter(){document.querySelectorAll('#stRoot [data-max]').forEach(stCount);stGprev()}
+function stCount(el){const c=document.querySelector(`.st-count[data-for="${el.id}"]`);if(!c)return;const m=+el.dataset.max,n=el.value.length;c.textContent=n+' / '+m+' caractères'+(n>m?' · trop long, Google coupera la fin':'');c.classList.toggle('over',n>m)}
+function stGprev(){const b=document.getElementById('stGprev');if(!b||!st.data)return;b.innerHTML=`<div class="u">phenoandco.com</div><div class="h">${esc(st.data.seo.titre)}</div><div class="d">${esc(st.data.seo.desc)}</div>`}
+function stState(){const s=document.getElementById('stState'),b=document.querySelector('[data-st="save"]');if(!s)return;const d=stDirty();s.textContent=st.busy?'Envoi en cours…':d?'Changements non enregistrés':'Tout est enregistré';if(b)b.disabled=!d||st.busy}
+function stShrink(file){return new Promise((ok,ko)=>{if(!/^image\/(jpeg|png|webp)$/.test(file.type)||file.size>25e6){ko(new Error('format'));return}
+  const u=URL.createObjectURL(file),im=new Image();im.onload=()=>{const m=1600,r=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');c.width=Math.round(im.width*r);c.height=Math.round(im.height*r);c.getContext('2d').drawImage(im,0,0,c.width,c.height);URL.revokeObjectURL(u);c.toBlob(b=>b?ok(b):ko(new Error('canvas')),'image/jpeg',.82)};im.onerror=()=>{URL.revokeObjectURL(u);ko(new Error('image'))};im.src=u})}
+async function stUpload(file){if(!st.salon)throw new Error('droits');const blob=await stShrink(file);const name=st.salon+'/'+Date.now()+'-'+Math.random().toString(36).slice(2,8)+'.jpg';
+  const r=await SB.storage.from(ST_BUCKET).upload(name,blob,{contentType:'image/jpeg',upsert:false});if(r.error)throw r.error;return SB.storage.from(ST_BUCKET).getPublicUrl(name).data.publicUrl}
+async function stFiles(input){const files=[...input.files];input.value='';if(!files.length)return;st.busy=true;stState();toast('Envoi de '+files.length+' photo(s)…');
+  try{const mode=input.dataset.stFile;
+    if(mode==='add'){for(const f of files.slice(0,40-st.data.photos.list.length))st.data.photos.list.push(await stUpload(f))}
+    else if(mode==='rep')st.data.photos.list[+input.dataset.i]=await stUpload(files[0]);
+    else stSet(input.dataset.p,await stUpload(files[0]));
+    toast('Photo prête. Pense à enregistrer.')}
+  catch(e){toast(e&&e.message==='format'?'Ce fichier n’est pas une photo JPG, PNG ou WEBP.':'La photo n’a pas pu être envoyée. Réessaie.')}
+  st.busy=false;render()}
+function stOwnPaths(c){const pre=SB?SB.storage.from(ST_BUCKET).getPublicUrl('').data.publicUrl:'';const all=[...(c.photos?.list||[]),c.histoire?.photo,c.trouver?.photo].filter(Boolean);return pre?all.filter(u=>u.startsWith(pre)).map(u=>decodeURIComponent(u.slice(pre.length))):[]}
+async function stSave(){if(!stDirty()||st.busy)return;
+  const d=st.data;d.presta.items=d.presta.items.filter(x=>(x.t||'').trim());d.pourquoi.items=d.pourquoi.items.filter(x=>(x.t||'').trim()||(x.s||'').trim());
+  st.busy=true;stState();
+  try{const r=await SB.rpc('pro_site_save',{p_content:d});if(r.error||!r.data||!r.data.ok)throw r.error||new Error(r.data&&r.data.error);
+    const old=stOwnPaths(JSON.parse(st.saved)),now=new Set(stOwnPaths(d)),gone=old.filter(p=>!now.has(p));
+    if(gone.length)SB.storage.from(ST_BUCKET).remove(gone).catch(()=>{});
+    st.saved=JSON.stringify(d);toast('Enregistré. Ton site est à jour.')}
+  catch(e){toast('L’enregistrement n’a pas abouti. Vérifie ta connexion et réessaie.')}
+  st.busy=false;render()}
+document.addEventListener('click',e=>{const el=e.target.closest('[data-st]');if(!el||el.disabled||!st.data&&el.dataset.st!=='reload')return;const k=el.dataset.k,i=+el.dataset.i,d=+el.dataset.d;
+  switch(el.dataset.st){
+  case 'reload':st.err='';stLoad();render();break;
+  case 'open':st.open[k]=!st.open[k];render();break;
+  case 'mv':{const a=st.data[k].items,x=a[i];a[i]=a[i+d];a[i+d]=x;render();break}
+  case 'pmv':{const a=st.data.photos.list,x=a[i];a[i]=a[i+d];a[i+d]=x;render();break}
+  case 'add':st.data[k].items.push({t:'',s:''});render();setTimeout(()=>{const f=document.querySelectorAll(`[data-st-in^="${k}.items."]`);const last=f[f.length-2];if(last)last.focus()},0);break;
+  case 'rm':confirmModal('Supprimer '+(k==='presta'?'cette pastille':'ce point')+' ?','<p>« '+esc(st.data[k].items[i].t||'Sans titre')+' » disparaîtra du site quand tu enregistreras.</p>',()=>{st.data[k].items.splice(i,1);render()},'Supprimer');break;
+  case 'prm':confirmModal('Retirer cette photo ?','<p>La photo '+(i+1)+' disparaîtra du site quand tu enregistreras.</p>',()=>{st.data.photos.list.splice(i,1);render()},'Retirer');break;
+  case 'save':stSave();break}});
+document.addEventListener('input',e=>{const el=e.target;if(!el.dataset||!el.dataset.stIn||!st.data)return;stSet(el.dataset.stIn,el.value);if(el.dataset.max)stCount(el);if(el.dataset.stIn.startsWith('seo.'))stGprev();stState()});
+document.addEventListener('change',e=>{const el=e.target;if(!el.dataset||!st.data)return;
+  if(el.dataset.stTog){st.data[el.dataset.stTog].on=el.checked;render()}
+  else if(el.dataset.stFile)stFiles(el)});
+{const _stHas=hasDirty;hasDirty=function(){return _stHas.apply(this,arguments)||(ui.page==='site'&&stDirty())}}
+{const _stClear=clearDraft;clearDraft=function(){if(ui.page==='site'){st.loaded=false;st.data=null}return _stClear.apply(this,arguments)}}
+{const _stRender=render;render=function(){const a=document.activeElement;if(ui.page==='site'&&st.loaded&&a&&a.closest&&a.closest('#stRoot')&&a.matches('input[type=text],textarea')){renderChrome();return}const r=_stRender.apply(this,arguments);if(ui.page==='site')stAfter();return r}}
+addEventListener('beforeunload',e=>{if(ui.page==='site'&&stDirty()){e.preventDefault();e.returnValue=''}});
+(function(){const s=document.createElement('style');s.textContent=`
+.st-sec{margin-bottom:14px;overflow:hidden}
+.st-h{display:flex;align-items:center;gap:12px;width:100%;min-height:64px;padding:14px 16px;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.st-t{flex:1}.st-t strong{display:block;font-size:16px}.st-t span{font-size:13px;color:var(--muted)}
+.st-chev{color:var(--muted);transition:transform .2s;font-size:20px}.st-sec.open .st-chev{transform:rotate(90deg)}
+.st-b{padding:4px 16px 18px;border-top:1px solid var(--line)}
+.st-f{margin-top:14px}.st-f input,.st-f textarea{width:100%;font-size:16px}
+.st-count{display:block;text-align:right;font-size:12px;color:var(--muted);margin-top:4px}.st-count.over{color:var(--red);font-weight:700}
+.st-tog{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 0;border-bottom:1px solid var(--line)}
+.st-tog strong{display:block}.st-tog span{font-size:13px;color:var(--muted)}
+.st-sw{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:700;font-size:14px}
+.st-sw input{position:absolute;opacity:0;width:1px;height:1px}
+.st-track{width:52px;height:30px;border-radius:999px;background:var(--line);position:relative;transition:background .2s}
+.st-track::after{content:"";position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:transform .2s}
+.st-sw input:checked+.st-track{background:var(--gold)}.st-sw input:checked+.st-track::after{transform:translateX(22px)}
+.st-sw input:focus-visible+.st-track{outline:2px solid var(--gold);outline-offset:2px}
+.st-state{min-width:62px;text-align:right;color:var(--muted)}.st-sw input:checked~.st-state{color:var(--gold)}
+.st-item{background:var(--raised);border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:12px}
+.st-ih{display:flex;align-items:center;gap:8px}.st-ih strong{flex:1;color:var(--gold);font-size:14px}
+.st-mini{min-height:40px;min-width:44px;padding:0 10px;font-size:14px;justify-content:center}.st-del{color:var(--red)}
+.st-add{display:flex;align-items:center;justify-content:center;width:100%;min-height:50px;margin-top:12px;border-radius:12px;border:1px dashed var(--gold);background:none;color:var(--gold);font:inherit;font-weight:700;cursor:pointer}
+.st-photos{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
+.st-ph{position:relative;border-radius:14px;overflow:hidden;background:var(--raised);border:1px solid var(--line)}
+.st-ph img{width:100%;aspect-ratio:3/4;object-fit:cover;display:block;background:var(--surface)}
+.st-n{position:absolute;top:8px;left:8px;background:rgba(10,18,32,.85);border-radius:8px;padding:2px 8px;font-size:13px;font-weight:700}
+.st-acts{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px}.st-acts .st-mini{width:100%}
+.st-two{display:grid;gap:12px;margin-top:16px}
+.st-one{background:var(--raised);border:1px solid var(--line);border-radius:14px;padding:12px;display:grid;gap:10px}
+.st-onel{font-size:13px;color:var(--muted);font-weight:600}.st-one img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px}
+.st-none{aspect-ratio:4/3;border-radius:10px;border:1px dashed var(--line);display:grid;place-items:center;color:var(--muted)}
+.st-gl{font-size:13px;color:var(--muted);font-weight:600;margin-top:16px}
+.st-gprev{margin-top:8px;background:#fff;border-radius:14px;padding:14px 16px;color:#202124;font-family:Arial,sans-serif}
+.st-gprev .u{font-size:13px;color:#4d5156}.st-gprev .h{color:#1a0dab;font-size:18px;line-height:1.3;margin:4px 0}.st-gprev .d{font-size:14px;color:#4d5156;line-height:1.45}
+.st-save{position:sticky;bottom:0;z-index:5;margin-top:6px;border-radius:16px}
+@media(min-width:700px){.st-photos{grid-template-columns:repeat(4,1fr)}.st-two{grid-template-columns:1fr 1fr}}`;document.head.appendChild(s)})();
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 const TRANSLATIONS={};
 function words(fr,en,es,it){TRANSLATIONS[fr]={fr,en,es,it}}
@@ -717,12 +843,12 @@ function activeBookings(date){return current().bookings.filter(b=>b.status==='co
 function atSlot(date,time,seat){return activeBookings(date).find(b=>b.time===time&&b.seat===seat)}
 function initials(s){return s.split(/\s+/).filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase()}
 function renderChrome(){document.documentElement.lang=ui.lang;document.title='Pheno&Co Dashboard';document.documentElement.style.setProperty('--gold',db.settings.accent);const h=db.settings.accent.replace('#','');const lum=(.2126*parseInt(h.slice(0,2),16)+.7152*parseInt(h.slice(2,4),16)+.0722*parseInt(h.slice(4,6),16));document.documentElement.style.setProperty('--accent-ink',lum>140?'#111722':'#ffffff');document.body.style.backgroundImage=db.settings.background?`linear-gradient(#0c1525e8,#0c1525e8),url("${db.settings.background}")`:'';
- const nav=[['home','Accueil'],['agenda','Agenda'],['annulations','Annulations'],['inbox','Messagerie carte'],['clients','Clients'],['fidelite','Carte de fidélité client'],['caisse','Caisse'],['stats','Statistiques'],['relances','Relances'],['avis','Avis Google'],['location','Location de fauteuils'],['vacations','Vacances et fermetures'],['hours','Horaires'],['messages','Messages']];
+ const nav=[['home','Accueil'],['agenda','Agenda'],['annulations','Annulations'],['inbox','Messagerie carte'],['clients','Clients'],['fidelite','Carte de fidélité client'],['caisse','Caisse'],['stats','Statistiques'],['relances','Relances'],['avis','Avis Google'],['location','Location de fauteuils'],['vacations','Vacances et fermetures'],['hours','Horaires'],['messages','Messages'],['site','Site & SEO']];
  document.getElementById('sidebar').innerHTML=`<div class="brand"><div class="brandmark"><img alt="" src="${db.settings.logo||'logo.png'}"></div><div><strong>${esc(db.settings.name)}</strong><div class="caps">Espace administrateur</div><div class="localinfo" style="font-size:11px;line-height:1.3;margin-top:2px">Site de réservation + cartes de fidélité</div></div></div><div class="navgroup">${txt('VOTRE SALON')}</div><nav aria-label="${txt('Navigation principale')}">${nav.map(([id,label])=>`<button class="navitem ${ui.page===id?'active':''}" data-action="page" data-page="${id}" ${ui.page===id?'aria-current="page"':''}>${icon(id)}<span>${txt(label)}</span>${id==='clients'?`<span class="badge">${db.clients.length}</span>`:''}${id==='relances'&&typeof mxRlTodo==='function'&&mxRlTodo().length?`<span class="badge">${mxRlTodo().length}</span>`:''}${id==='inbox'&&typeof mgWaiting==='function'&&mgWaiting()?`<span class="badge" style="background:var(--gold);color:#0B1629;opacity:1;border-radius:999px;padding:1px 8px">${mgWaiting()}</span>`:''}${id==='annulations'&&typeof cx3NewCount==='function'&&cx3NewCount()?`<span class="badge" style="background:var(--red);color:#fff;opacity:1;border-radius:999px;padding:1px 8px">${cx3NewCount()}</span>`:''}</button>`).join('')}</nav><div class="sidebottom"><button class="navitem ${ui.page==='settings'?'active':''}" data-action="page" data-page="settings">${icon('settings')}${txt('Paramètres')}</button><button class="navitem" data-action="help">${icon('info')}${txt('Aide et connexion')}</button><button class="profile" type="button" data-action="page" data-page="settings" style="width:100%;background:none;border:0;color:inherit;text-align:left;padding-inline:0"><div class="avatar">${esc(initials(db.settings.ownerName||'Phéno'))}</div><div><strong class="small">${esc(db.settings.ownerName||'Phéno')}</strong><div class="localinfo">${txt('Espace personnel')}</div></div></button><p class="localinfo" style="margin-top:16px">${txt('Version connectée')} · ${VERSION}</p></div>`;
  document.getElementById('topbar').innerHTML=`${iconBtn('Ouvrir le menu','menu','menu','class="menuBtn"').replace('btn ghost iconbtn','btn ghost iconbtn menuBtn').replace(' class="menuBtn"','')}<form class="topsearch" id="globalSearchForm">${icon('search')}<input id="globalSearch" aria-label="${txt('Rechercher un client')}" placeholder="${txt('Rechercher un client')}" value=""></form><div class="topactions"><span class="connection">${icon(backendConnected?'check':'info')}${backendConnected?'Base connectée':txt('Connexion…')}</span>${iconBtn('Aide et connexion','help','info')}<select id="language" aria-label="${txt('Langue')}">${[['fr','FR'],['en','EN'],['es','ES'],['it','IT']].map(([v,l])=>`<option value="${v}" ${ui.lang===v?'selected':''}>${l}</option>`).join('')}</select></div>`}
 function heading(label,sub,actions=''){return `<div class="pagehead"><div><div class="eyebrow caps">${esc(db.settings.name)} / ${txt(label)}</div><h1>${txt(label)}</h1><p class="subtitle">${esc(sub)}</p></div><div class="pageactions">${actions}</div></div>`}
 function modeBar(){return `<div class="modebar"><span class="row">${icon(ui.mode==='demo'?'info':'lock')}<span>${ui.mode==='demo'?txt('Démonstration · rendez-vous fictifs, séparés de vos données.'):'Agenda connecté · les rendez-vous du site arrivent ici, et tes fermetures bloquent le site.'}</span></span>${btn(ui.mode==='demo'?'Quitter la démonstration':'Essayer des exemples','demo','','ghost')}</div>`}
-function render(){renderChrome();const target=document.getElementById('main');target.innerHTML=(!storageOK?`<div class="notice error" style="margin-bottom:18px">${txt('Sauvegarde impossible. Exportez une copie de vos données.')}</div>`:'')+({agenda:renderAgenda,clients:renderClients,fidelite:renderFidelite,caisse:renderCaisse,annulations:renderAnnulations,inbox:renderInbox,home:renderHome,stats:renderStats,relances:renderRelances,avis:renderAvis,location:renderLocation,vacations:()=>renderVacations()+lateStartCard(),hours:renderHours,messages:renderMessages,settings:()=>renderSettings()+startPageCard()+svcSwitchCard()+hubSettingsCard()+agendaNotifCard()}[ui.page]());}
+function render(){renderChrome();const target=document.getElementById('main');target.innerHTML=(!storageOK?`<div class="notice error" style="margin-bottom:18px">${txt('Sauvegarde impossible. Exportez une copie de vos données.')}</div>`:'')+({agenda:renderAgenda,clients:renderClients,fidelite:renderFidelite,caisse:renderCaisse,annulations:renderAnnulations,inbox:renderInbox,home:renderHome,stats:renderStats,relances:renderRelances,avis:renderAvis,location:renderLocation,vacations:()=>renderVacations()+lateStartCard(),hours:renderHours,messages:renderMessages,site:renderSite,settings:()=>renderSettings()+startPageCard()+svcSwitchCard()+hubSettingsCard()+agendaNotifCard()}[ui.page]());}
 function miniCalendar(){return `<div class="card minicard"><div class="pad minical">${calendarHTML(ui.miniMonth,'mini')}</div></div>`}
 function calendarHTML(month,type){const first=month.slice(0,7)+'-01',last=dateObj(monthShift(first,1));last.setDate(0);const offset=(weekday(first)+6)%7;let cells='';for(let i=0;i<offset;i++)cells+='<span></span>';for(let n=1;n<=last.getDate();n++){const d=first.slice(0,8)+String(n).padStart(2,'0'),closed=type==='vac'?ui.vacDraft.has(d):(type==='agenda'&&current().closures.includes(d)),rest=current().weekly[weekday(d)].closed,cnt=type==='agenda'?activeBookings(d).length:0;cells+=`<button type="button" class="calcell ${d===today()?'today':''} ${closed?'blocked':''} ${(type==='mini'||type==='agenda')&&d===ui.date?'active':''} ${cnt?'hasrdv':''} ${rest&&!closed?'rest':''}" data-action="${type==='vac'?'vac-day':'agenda-date'}" data-date="${d}" aria-label="${esc(fmt(d))}${closed?' — '+txt('Fermé'):''}" ${type==='vac'?`aria-pressed="${closed}"`:d===ui.date?'aria-current="date"':''}><span>${n}</span>${type==='agenda'?(cnt?`<span class="status">${cnt}</span>`:closed?`<span class="status">${txt('Fermé')}</span>`:''):''}${type==='vac'?`<span class="status">${closed?'✓ '+txt('Fermé'):rest?txt('Repos'):''}</span>`:''}</button>`}return `<div class="calnav">${iconBtn('Mois précédent',type==='vac'?'vac-prev':'mini-prev','left')}<strong>${esc(fmt(first,{month:'long',year:'numeric'}))}</strong>${iconBtn('Mois suivant',type==='vac'?'vac-next':'mini-next','right')}</div><div class="calgrid">${Array.from({length:7},(_,i)=>`<div class="calweekday">${esc(fmt(addDays('2026-09-14',i),{weekday:'short'}))}</div>`).join('')}${cells}</div>`}
 function stat(label,value,ico){return `<div class="card stat"><div><div class="statlabel">${txt(label)}</div><div class="statvalue" ${label==='Horaires du jour'?'style="font-size:20px"':''}>${esc(value)}</div></div><div class="statIcon">${icon(ico)}</div></div>`}
